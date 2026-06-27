@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dotnet-fast — fast .NET formatter, linter, build cache &amp; test sharding</title>
+<meta name="description" content="Fast .NET workspace tooling in Rust: a dotnet format alternative + C# linter, Git affected-project detection, an Azure Blob remote build cache, and NUnit test sharding for Azure DevOps & GitHub Actions CI. Starts instantly; 10–100× faster on common jobs." />
+<meta name="keywords" content="dotnet, dotnet format, dotnet format alternative, C# linter, .NET formatter, dotnet tool, Roslyn analyzers, affected projects, build cache, Azure Blob, NUnit test sharding, Azure DevOps, GitHub Actions, CI, code quality, Rust" />
+<link rel="canonical" href="https://dotnet-fast.wee-app.com/" />
+<meta name="robots" content="index,follow" />
+<meta name="theme-color" content="#0b0e14" />
+<!-- Open Graph / Twitter -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="dotnet-fast" />
+<meta property="og:title" content="dotnet-fast — fast .NET formatter, linter, build cache &amp; test sharding" />
+<meta property="og:description" content="Rust-powered, instant-start .NET tooling: dotnet format alternative + C# linter, affected-project detection, Azure Blob build cache, and NUnit test sharding for CI." />
+<meta property="og:url" content="https://dotnet-fast.wee-app.com/" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="dotnet-fast — fast .NET tooling" />
+<meta name="twitter:description" content="Format, lint, affected detection, build cache & NUnit test sharding — 10–100× faster, instant start." />
+<!-- Structured data for rich results -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "dotnet-fast",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "description": "Fast .NET workspace tooling in Rust: a dotnet format alternative + C# linter, Git affected-project detection, an Azure Blob remote build cache, and NUnit test sharding for CI.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://github.com/RDalziel/dotnet-fast/blob/main/LICENSE.txt",
+  "downloadUrl": "https://www.nuget.org/packages/RDLL.dotnet-fast",
+  "softwareHelp": "https://github.com/RDalziel/dotnet-fast"
+}
+</script>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121723; --panel2:#0f1420; --ink:#e6edf3; --muted:#9aa7b8;
+    --line:#222c3d; --accent:#5ad1a0; --accent2:#7aa2ff; --code:#0a0d13; --coffee:#ffdd00;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  code,kbd,pre{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  header{border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0d1220, #0b0e14)}
+  .nav{display:flex;align-items:center;justify-content:space-between;padding:16px 0}
+  .brand{font-weight:700;letter-spacing:.2px}
+  .brand .dot{color:var(--accent)}
+  .nav a{color:var(--muted);margin-left:18px;font-size:14px}
+  .hero{padding:64px 0 40px}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+  .badges img{height:20px}
+  h1{font-size:clamp(30px,5vw,46px);line-height:1.1;margin:0 0 14px;letter-spacing:-.5px}
+  h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{font-size:19px;color:var(--muted);max-width:720px;margin:0 0 26px}
+  .cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .btn{display:inline-block;padding:11px 18px;border-radius:10px;font-weight:600;font-size:15px;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+  .btn.primary{background:var(--accent);color:#04130d;border-color:transparent}
+  .btn.coffee{background:var(--coffee);color:#1a1a00;border-color:transparent}
+  .btn:hover{text-decoration:none;filter:brightness(1.06)}
+  .install{margin:26px 0 0}
+  pre.cmd{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;color:#cfe8df;font-size:14px;margin:8px 0}
+  .muted{color:var(--muted)}
+  section{padding:40px 0;border-top:1px solid var(--line)}
+  h2{font-size:24px;margin:0 0 18px;letter-spacing:-.3px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .card h3{margin:0 0 6px;font-size:16px}
+  .card h3 code{background:none;color:var(--accent);padding:0;font-size:15px}
+  .card p{margin:0;color:var(--muted);font-size:14px}
+  .tag{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    color:#04130d;background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+  .tag.preview{background:var(--accent2);color:#03102b}
+  .perf{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:18px;text-align:center}
+  .stat .n{font-size:30px;font-weight:800;color:var(--accent)}
+  .stat .l{font-size:13px;color:var(--muted)}
+  ul.clean{padding-left:20px;color:var(--muted)} ul.clean li{margin:6px 0}
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-size:14px}
+  footer a{color:var(--muted)}
+  .coffee-note{margin-top:8px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <div class="brand">dotnet<span class="dot">-</span>fast</div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#ci">CI</a>
+      <a href="https://github.com/RDalziel/dotnet-fast">Docs</a>
+      <a href="https://www.nuget.org/packages/RDLL.dotnet-fast">NuGet</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero" style="border-top:none">
+    <div class="badges">
+      <a href="https://www.nuget.org/packages/RDLL.dotnet-fast"><img alt="NuGet" src="https://img.shields.io/nuget/v/RDLL.dotnet-fast.svg?logo=nuget"></a>
+      <a href="https://www.nuget.org/packages/RDLL.dotnet-fast"><img alt="Downloads" src="https://img.shields.io/nuget/dt/RDLL.dotnet-fast.svg"></a>
+      <a href="https://github.com/RDalziel/dotnet-fast/blob/main/LICENSE.txt"><img alt="Freeware" src="https://img.shields.io/badge/License-Freeware-blue.svg"></a>
+    </div>
+    <h1>Fast .NET tooling —<br><span class="grad">format, lint, build cache &amp; test sharding</span></h1>
+    <p class="lede">A Rust-powered, instant-start alternative to <code>dotnet format</code> plus a C#
+      linter — and CI accelerators: Git affected-project detection, an Azure&nbsp;Blob remote build
+      cache, and NUnit test sharding for Azure&nbsp;DevOps and GitHub&nbsp;Actions. The native paths
+      load no MSBuild or Roslyn, so they start in milliseconds and run common jobs 10–100× faster.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Get started</a>
+      <a class="btn" href="https://github.com/RDalziel/dotnet-fast">Documentation</a>
+      <a class="btn coffee" href="https://buymeacoffee.com/rdll">☕ Buy me a coffee</a>
+    </div>
+  </section>
+
+  <section id="install" style="border-top:none;padding-top:0">
+    <h2>Install</h2>
+    <pre class="cmd">dotnet tool install -g RDLL.dotnet-fast
+dotnet tool update  -g RDLL.dotnet-fast   # update to the latest</pre>
+    <pre class="cmd">dotnet-fast lint path/to/App.sln          # report findings (the CI gate)
+dotnet-fast lint --fix path/to/App.sln    # apply every safe fix in one pass
+dotnet-fast affected --ci                 # projects to build/test for this change
+dotnet-fast test-plan --shards 8 --format matrix .</pre>
+  </section>
+
+  <section id="features">
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><h3><code>lint</code></h3><p>Report formatting + native CST lint findings (the fast CI gate). <code>--fix</code> applies the safe fixes; <code>--deep</code> opts into the project's <strong>real Roslyn analyzers</strong>.</p></div>
+      <div class="card"><h3><code>format</code></h3><p>Apply whitespace/style formatting on a <code>dotnet format</code>-compatible path — no MSBuild load, starts in milliseconds.</p></div>
+      <div class="card"><h3><code>affected</code></h3><p>List the projects a Git change set affects (plus reverse-dependents) for scoped CI. Emits a job matrix for Azure DevOps / GitHub Actions.</p></div>
+      <div class="card"><h3><code>build</code> <span class="tag preview">preview</span></h3><p>Remote build cache backed by Azure&nbsp;Blob Storage: restore cached build outputs on a clean checkout instead of rebuilding; build misses and upload trusted artifacts.</p></div>
+      <div class="card"><h3><code>test-plan</code> <span class="tag preview">preview</span></h3><p>NUnit test sharding for parallel CI agents — discovered from source <em>before</em> test assemblies are built, balanced with project affinity, emitted as an ADO/Actions matrix.</p></div>
+      <div class="card"><h3><code>doctor</code></h3><p>Fast, build-free scan for common workspace problems (duplicate references, CPM conflicts, inconsistent lock usage, and more).</p></div>
+    </div>
+    <p class="muted" style="margin-top:14px">Native paths use no MSBuild or Roslyn (hand-written XML/filesystem evaluation + tree-sitter). The exceptions are documented and opt-in: <code>lint --deep</code> runs real Roslyn analyzers, and <code>build</code> orchestrates the real <code>dotnet build</code> on a cache miss.</p>
+  </section>
+
+  <section id="speed">
+    <h2>Built for speed</h2>
+    <div class="perf">
+      <div class="stat"><div class="n">10–100×</div><div class="l">faster on common jobs</div></div>
+      <div class="stat"><div class="n">~292×</div><div class="l">startup-bound <code>format</code> check</div></div>
+      <div class="stat"><div class="n">16–28×</div><div class="l"><code>affected</code> detection</div></div>
+      <div class="stat"><div class="n">ms</div><div class="l">native cold start</div></div>
+      <div class="stat"><div class="n">481</div><div class="l">Roslyn analyzers ported to the native path (curated default available)</div></div>
+    </div>
+    <p class="muted" style="margin-top:12px">Every run reports its own cost; add <code>--json</code> to any command for machine-readable results and timing.</p>
+  </section>
+
+  <section id="ci">
+    <h2>Made for CI</h2>
+    <ul class="clean">
+      <li><strong>Scope the build</strong> — <code>affected --ci</code> tells the pipeline exactly which projects changed.</li>
+      <li><strong>Skip the rebuild</strong> — <code>build</code> restores prior outputs from an Azure&nbsp;Blob cache on a clean checkout.</li>
+      <li><strong>Parallelize tests</strong> — <code>test-plan</code> shards NUnit suites across agents (Azure&nbsp;DevOps <code>parallel</code>/<code>matrix</code>, GitHub Actions) without building first.</li>
+    </ul>
+    <p class="muted">Guides: <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/build-cache.md">build cache</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/test-sharding.md">test sharding</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ported-analyzers.md">ported analyzers</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md">full command reference</a>.</p>
+  </section>
+
+  <section id="support">
+    <h2>Support the project</h2>
+    <p class="muted"><code>dotnet-fast</code> is free to use. If it speeds up your builds and CI, a coffee genuinely helps and is much appreciated.</p>
+    <p style="margin-top:14px"><a class="btn coffee" href="https://buymeacoffee.com/rdll">☕ Buy me a coffee</a></p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><strong>dotnet-fast</strong> — <a href="https://www.nuget.org/packages/RDLL.dotnet-fast">NuGet</a> ·
+      <a href="https://github.com/RDalziel/dotnet-fast">GitHub</a> ·
+      <a href="https://github.com/RDalziel/dotnet-fast/issues/new/choose">Open an issue</a> ·
+      <a href="https://buymeacoffee.com/rdll">Buy me a coffee</a></p>
+    <p>Free to use — see <a href="https://github.com/RDalziel/dotnet-fast/blob/main/LICENSE.txt">LICENSE</a>. Install: <code>dotnet tool install -g RDLL.dotnet-fast</code></p>
+  </div>
+</footer>
+</body>
+</html>
