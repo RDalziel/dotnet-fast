@@ -1,0 +1,56 @@
+dotnet-fast — End User License Agreement (Freeware)
+
+Copyright (c) 2026 Richard Dalziel. All rights reserved.
+
+This is a license, not a sale. The dotnet-fast and dotnet-format-fast software,
+including the distributed binaries, NuGet packages, documentation, and
+accompanying files (the "Software"), is licensed, not sold, to you by Richard
+Dalziel ("the Author"). The Software's source code is proprietary and is not
+included with, or published alongside, the Software.
+
+1. Grant of license
+   Subject to your compliance with this Agreement, the Author grants you a
+   worldwide, royalty-free, non-exclusive, non-transferable license to install
+   and use the Software, in unmodified form, on any number of machines, for any
+   lawful purpose, including commercial use within your own organization.
+
+2. Restrictions
+   You may NOT:
+   (a) sell, rent, lease, sublicense, or otherwise charge a fee for the
+       Software or for access to it;
+   (b) redistribute, republish, mirror, or re-host the Software or its packages,
+       in whole or in part, through any channel of your own — instead link to
+       the official distribution (the NuGet.org package "RDLL.dotnet-fast");
+   (c) modify, adapt, translate, or create derivative works of the Software;
+   (d) reverse engineer, decompile, or disassemble the Software, or otherwise
+       attempt to reconstruct or discover its source code, except, and only to
+       the extent, that applicable law expressly permits despite this
+       limitation;
+   (e) remove, obscure, or alter any copyright, trademark, or other proprietary
+       notice in or on the Software.
+
+3. Ownership
+   The Software is protected by copyright and other intellectual-property laws.
+   The Author retains all right, title, and interest in and to the Software. No
+   rights are granted to you except as expressly set out in this Agreement.
+
+4. No warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+5. Limitation of liability
+   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+   FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
+
+6. Termination
+   This license terminates automatically if you breach any of its terms. On
+   termination you must cease all use of the Software and remove all copies in
+   your possession or control.
+
+7. Reservation of rights
+   The Author may offer the Software, or any future version, under different
+   terms at any time. This Agreement governs the version of the Software with
+   which it was distributed.
