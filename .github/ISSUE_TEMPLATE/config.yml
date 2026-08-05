@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Command reference
+    url: https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md
+    about: Full list of commands and options before filing.
+  - name: Deep linting docs
+    url: https://github.com/RDalziel/dotnet-fast/blob/main/docs/deep-linting.md
+    about: How the real-Roslyn (--deep) mode works.
