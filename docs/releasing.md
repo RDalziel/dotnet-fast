@@ -13,12 +13,18 @@ CLI-contract and deprecation rules that decide which segment moves — is in
 behind it.
 
 One version identifies everything in a release: the NuGet package version, the release tag (`vX.Y.Z` —
-the same number with a `v` prefix), and what `dotnet-fast --version` prints (`0.307.0`, bare) all refer
+the same number with a `v` prefix), and what `dotnet-fast --version` prints (`1.0.0`, bare) all refer
 to the same build. There is no separate build number, and a published version is never re-cut with
 different content.
 
-The tool is still `0.x`. The compatibility rules in [versioning.md](versioning.md) are what we hold to
-today; the `1.0` tag is when they become a formal promise rather than a working practice.
+The stable line is **`1.0.0`**. The compatibility rules in [versioning.md](versioning.md) were already
+how we worked before it; from `1.0` they are a formal promise rather than a working practice, and a
+break in them costs a major version.
+
+A pre-release version carries a suffix (`1.0.0-rc.1`) and is published as a **pre-release** on both
+NuGet and GitHub, so `dotnet tool install` and the GitHub "latest release" link keep resolving the
+stable line until the final version ships. Installing one is always explicit — see
+[RELEASES.md](../RELEASES.md) for the commands.
 
 ## What a release ships
 

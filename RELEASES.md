@@ -1,7 +1,8 @@
 # Release notes
 
-What changed in recent releases, in plain English. Newest first. The tool is `0.x` — usable and tested,
-but commands may still change before `1.0`.
+What changed in recent releases, in plain English. Newest first.
+
+The current **stable** line is `1.0.0`.
 
 > **Standing correction (2026-08-03): every whole-repository parity percentage published in an entry
 > below dated before 2026-08-03 is withdrawn, and none of them should be quoted.** The harness that
@@ -12,6 +13,145 @@ but commands may still change before `1.0`.
 > that carried the headline claims; the only current figures are in the
 > [support matrix](docs/support-matrix.md), measured under a harness that verifies both tools processed
 > the same files and fails the run when they did not.
+
+## 1.0.0 — the compatibility promise starts here
+
+**`1.0.0` is `1.0.0-rc.1` plus one fix**, found by the pre-release install verification and described
+below. Nothing else in the tool differs between the two. What else changes is what you are entitled
+to rely on.
+
+```bash
+# new install
+dotnet tool install --global RDLL.dotnet-fast
+
+# already have it (including from the candidate)
+dotnet-fast update
+```
+
+A plain install or update now resolves `1.0.0` — no version flag needed, and the GitHub "latest
+release" link points here.
+
+### Fixed
+
+**A `--tool-path` install into a deep directory could crash on its first run.** The failure was an
+unhandled .NET exception ending in "The system cannot find the file specified" — about a file that
+was sitting right there on disk.
+
+The cause is a Windows limit rather than a missing file: a `--tool-path` install nests about 130
+characters of `.store` layout under whatever directory you choose, and once the native binary's full
+path reaches 260 characters `CreateProcess` refuses to start it. That limit is not lifted by the
+`LongPathsEnabled` setting, so a machine configured for long paths hit it anyway. It affected the
+install shape our own CI guidance recommends (`--tool-path <dir>`, then cache `<dir>`); the default
+global install is nowhere near the limit.
+
+The launcher now starts such a binary correctly via its short path, and if that is impossible — 8.3
+short names can be disabled per volume — it exits with a message naming the path length, the limit,
+and the fix, instead of a stack trace. A package smoke test now installs to a deliberately
+over-length path on every run, and fails loudly if the path it produces is *not* over the limit, so
+the guard cannot quietly stop testing anything.
+
+### What 1.0 actually promises
+
+Everything in **[versioning.md](docs/versioning.md)**, which was already how this tool was
+maintained — the difference is that breaking it now costs a major version instead of being a judgement
+call:
+
+- **A pipeline pinned to `1.x` keeps working.** An existing command or flag's name, behavior,
+  defaults, output shape (text, `--json` fields, SARIF fields, report file names) and exit codes do
+  not change. New capability arrives as new commands and new opt-in flags.
+- **Nothing is removed outright.** A retired flag keeps working while printing a deprecation notice
+  naming its replacement, for multiple releases, before removal in a major — and then fails with a
+  message telling you what to use, not `unknown command`.
+- **The parity floors are part of the promise.** A release does not ship below the published
+  per-repository floors in [support-matrix.md](docs/support-matrix.md).
+
+### What 1.0 does not mean
+
+It is a compatibility milestone, not a claim of completeness. Stated plainly so you can plan around
+it rather than discover it:
+
+- **Windows x64 only.** The package carries a `win-x64` native binary and nothing else, so a Linux or
+  macOS install *succeeds* and then fails on first run. linux-x64 is a 1.x item and starts outside the
+  promise.
+- **Formatter parity is 99%+, not 100%.** The current per-repository figures — measured over files
+  *both* tools actually opened, a check the harness now fails on rather than papering over — are in
+  the [support matrix](docs/support-matrix.md). Three known divergences remain, each with an open
+  issue rather than a silent expectation change.
+- **`--deep` findings still come from your analyzers and your SDK**, not from us, so they move when
+  those move.
+
+### Upgrading from the candidate
+
+Nothing to do beyond `dotnet-fast update`. If you pinned `1.0.0-rc.1` explicitly in
+`.config/dotnet-tools.json` or a CI step, change it to `1.0.0`; the pre-release stays published and
+installable, but it will not receive fixes.
+
+## 1.0.0-rc.1 — release candidate for 1.0
+
+The first release candidate for `1.0.0`. Everything below also ships in it.
+
+**It will not reach you by accident.** A plain `dotnet tool install` or `dotnet-fast update` still
+resolves the stable line (`0.307.0`), and the GitHub "latest release" link still points at stable.
+You get the candidate only by asking:
+
+```bash
+# new install
+dotnet tool install --global RDLL.dotnet-fast --version 1.0.0-rc.1
+
+# already have it
+dotnet-fast update --to 1.0.0-rc.1
+
+# back to stable at any time
+dotnet-fast update --to 0.307.0
+```
+
+### What 1.0 means
+
+Two documents define it, and both are worth reading before you pin to it:
+
+- **[Support matrix](docs/support-matrix.md)** — what is in scope and what is deliberately not.
+  Headline: **Windows x64 is the only supported platform**, and the only one a binary ships for.
+- **[Versioning promise](docs/versioning.md)** — what a major, minor and patch will mean after 1.0,
+  and the compatibility rules the command surface is held to.
+
+### Fixed since 0.307.0
+
+**We were formatting code `dotnet format` never opens — three separate causes.**
+
+1. `<File>` entries under a `.slnx` solution's Solution Items were treated as **projects**. Where
+   that file was an MSBuild traversal project at the repository root, it had no target framework and
+   no real compile list, so its default file glob matched *the entire repository* — every `.cs` file
+   was then processed a second time under the wrong set of preprocessor symbols.
+2. A `#if` line with a trailing comment (`#if !NETFRAMEWORK // not supported here`) failed to parse,
+   and an unparseable condition was assumed **active**. Code inside a branch your build excludes was
+   being formatted.
+3. A UTF-8 byte-order mark at the start of a file hid the `#` of a first-line directive, with the
+   same result.
+
+**`affected` could report a project nobody changed.** The same `.slnx` defect promoted that root
+traversal file to a project, so `affected` named it on *any* source change. If your CI feeds that
+list to `dotnet build`/`dotnet test`, it rebuilt everything — the exact opposite of the point.
+
+**`DF0010` no longer rewrites code that then fails to compile.** Converting `$"{value.ToString()}"`
+to `$"{value}"` is only valid on target frameworks with the modern interpolated-string handler. The
+fix is now withheld unless *every* target framework of the owning project supports it, and an
+unknown framework withholds rather than guesses.
+
+**Files that are entirely inside a disabled `#if` now match `dotnet format` byte for byte.**
+
+### Changed
+
+The four opt-in [guardrail rules](docs/guardrails.md) (`DF9001`–`DF9004`) report the same code as
+before, but their messages were rewritten to name the design principle behind the rule and the
+concrete refactoring move — single responsibility and extract-method rather than "file too long".
+They are aimed at an AI coding agent reading the error and deciding what to do next, where "too
+long" invites deleting blank lines and naming the principle invites separating concerns.
+
+### Trying it
+
+If you run it, please report anything that breaks — that is what a candidate is for. Formatter
+output differing from `dotnet format`, a fix that does not compile, or a command behaving
+differently from its documentation are all worth an issue.
 
 ## 0.307.0 — files behind an imported conditional are no longer skipped
 

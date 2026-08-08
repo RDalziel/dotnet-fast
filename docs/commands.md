@@ -548,8 +548,20 @@ so it is a source-control change, not just a machine change. The command says so
 reach the network for this, never cache a "last checked" timestamp, and never nag. This command
 touches nuget.org because you invoked it.
 
-If you are already ahead of the feed — a local build, or a release still indexing — it says so and
-does nothing, rather than offering to move you backwards.
+If you are already ahead of the feed — a local build, a pre-release, or a release still indexing — it
+says so and does nothing, rather than offering to move you backwards.
+
+**If you are running a pre-release, mind what `--dry-run` prints.** `--dry-run` needs no network, so
+it cannot know what the feed holds — it prints the plain `dotnet tool update` command for your
+install shape. That command resolves to the latest **stable** version, which from a pre-release is a
+*downgrade*. Running `update` itself is safe (it checks the feed first and declines to move you
+backwards); it is only the printed command, run by hand, that would take you back to stable. To move
+deliberately in either direction, name the version:
+
+```bash
+dotnet-fast update --to 1.0.0-rc.1   # onto a pre-release
+dotnet-fast update --to 1.0.0        # back to stable
+```
 
 ### Removed commands
 
