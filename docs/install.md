@@ -1,6 +1,6 @@
 # Install & first run
 
-This page was written from an actual install-and-run pass of `RDLL.dotnet-fast` 0.307.0 on Windows x64
+This page was written from an actual install-and-run pass of `RDLL.dotnet-fast` 1.0.0 on Windows x64
 — install, first run, verify, update, uninstall. Every output below is transcribed from that pass, with
 the sample working directory renamed to `C:\src\hello`. Nothing here is illustrative.
 
@@ -50,7 +50,7 @@ dotnet tool install RDLL.dotnet-fast
 
 ```
 You can invoke the tool from this directory using the following commands: 'dotnet tool run dotnet-fast' or 'dotnet dotnet-fast'.
-Tool 'rdll.dotnet-fast' (version '0.307.0') was successfully installed. Entry is added to the manifest file C:\src\hello\dotnet-tools.json.
+Tool 'rdll.dotnet-fast' (version '1.0.0') was successfully installed. Entry is added to the manifest file C:\src\hello\dotnet-tools.json.
 ```
 
 Where the manifest lands is the SDK's choice, not ours: **.NET 10 writes `dotnet-tools.json` in the
@@ -66,7 +66,7 @@ The manifest entry looks like this:
   "isRoot": true,
   "tools": {
     "rdll.dotnet-fast": {
-      "version": "0.307.0",
+      "version": "1.0.0",
       "commands": [
         "dotnet-fast"
       ],
@@ -95,7 +95,7 @@ dotnet tool install RDLL.dotnet-fast --tool-path C:\tools\dotnet-fast
 
 ```
 You can invoke the tool using the following command: dotnet-fast
-Tool 'rdll.dotnet-fast' (version '0.307.0') was successfully installed.
+Tool 'rdll.dotnet-fast' (version '1.0.0') was successfully installed.
 ```
 
 A `--tool-path` (or global) install is a real executable, so it is **not** affected by a repository
@@ -112,7 +112,7 @@ dotnet tool list --tool-path C:\tools\dotnet-fast
 ```
 Package Id            Version      Commands         Manifest
 ------------------------------------------------------------------------------
-rdll.dotnet-fast      0.307.0      dotnet-fast      C:\src\hello\dotnet-tools.json
+rdll.dotnet-fast      1.0.0        dotnet-fast      C:\src\hello\dotnet-tools.json
 ```
 
 ## First run
@@ -127,7 +127,7 @@ dotnet dotnet-fast --version
 ```
 
 ```
-0.307.0
+1.0.0
 ```
 
 Every other command prints a one-line banner to **stderr** before it does anything, naming the version
@@ -135,7 +135,7 @@ and — if a tool manifest is in scope — whether the running binary matches th
 pins:
 
 ```
-dotnet-fast 0.307.0 (matches pin in C:\src\hello\dotnet-tools.json)
+dotnet-fast 1.0.0 (matches pin in C:\src\hello\dotnet-tools.json)
 ```
 
 It goes to **stderr**, not stdout, so it never contaminates `--json` output or a piped report.
@@ -275,14 +275,14 @@ Every package on nuget.org is repository-signed by NuGet.org, and the SDK can ch
 Fetch the package and verify it before installing:
 
 ```bash
-curl -sSL -o RDLL.dotnet-fast.0.307.0.nupkg \
-  https://api.nuget.org/v3-flatcontainer/rdll.dotnet-fast/0.307.0/rdll.dotnet-fast.0.307.0.nupkg
-dotnet nuget verify RDLL.dotnet-fast.0.307.0.nupkg
+curl -sSL -o RDLL.dotnet-fast.1.0.0.nupkg \
+  https://api.nuget.org/v3-flatcontainer/rdll.dotnet-fast/1.0.0/rdll.dotnet-fast.1.0.0.nupkg
+dotnet nuget verify RDLL.dotnet-fast.1.0.0.nupkg
 ```
 
 ```
-Verifying RDLL.dotnet-fast.0.307.0
-Content hash: QT3PE7Md+ibHLWzNCVRpwjDuX38S67xb7TDSv2Z2bXT3+PUWkO+P/ug7p0y4FuqMcHlqcIoZRAiyMI+ND4WLVQ==
+Verifying RDLL.dotnet-fast.1.0.0
+Content hash: WhLgD60/cnglAQfwaMXex+mCRO2cI4d1llIB3Ro8fGo6MbXtPomHwFUbjN5P8rDWgluA0DlYFdSA1fnvrWdkIg==
 
 Signature type: Repository
   Subject Name: CN=NuGet.org Repository by Microsoft, O=NuGet.org Repository by Microsoft, …
@@ -309,7 +309,7 @@ dotnet dotnet-fast update               # do it
 ```
 
 ```
-dotnet-fast 0.307.0 is the latest published version.
+dotnet-fast 1.0.0 is the latest published version.
 ```
 
 `--dry-run` from a manifest install prints the command it would run, and says up front what it would
@@ -357,7 +357,7 @@ Tool 'rdll.dotnet-fast' was successfully uninstalled and removed from manifest f
 A `--tool-path` or global uninstall reports the version instead:
 
 ```
-Tool 'rdll.dotnet-fast' (version '0.307.0') was successfully uninstalled.
+Tool 'rdll.dotnet-fast' (version '1.0.0') was successfully uninstalled.
 ```
 
 Uninstalling removes the tool but leaves the downloaded package in the NuGet cache
@@ -379,7 +379,7 @@ or macOS. The install succeeds there because NuGet sees a portable .NET tool, bu
 a `win-x64` binary only. This is a documented limitation, not a bug:
 [support-matrix.md](support-matrix.md#platform).
 
-**The banner reads `dotnet-fast 0.307.0 (manifest pins 0.309.0 at …)`** — the binary that ran is not
+**The banner reads `dotnet-fast 1.0.0 (manifest pins 1.0.0-rc.1 at …)`** — the binary that ran is not
 the version the repository pins. Usually a global install is shadowing the manifest, or
 `dotnet tool restore` has not run since the manifest changed. The banner names both versions and the
 manifest path, so you can see exactly which two disagree.

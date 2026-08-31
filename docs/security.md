@@ -50,15 +50,15 @@ distribution-integrity signature, not a provenance statement.
 Download the `.nupkg` and verify every signature on it:
 
 ```bash
-curl -sSLO https://api.nuget.org/v3-flatcontainer/rdll.dotnet-fast/0.307.0/rdll.dotnet-fast.0.307.0.nupkg
-dotnet nuget verify rdll.dotnet-fast.0.307.0.nupkg --all
+curl -sSLO https://api.nuget.org/v3-flatcontainer/rdll.dotnet-fast/1.0.0/rdll.dotnet-fast.1.0.0.nupkg
+dotnet nuget verify rdll.dotnet-fast.1.0.0.nupkg --all
 ```
 
-That prints the real output for `0.307.0` — at the default verbosity, exactly this and nothing else:
+That prints the real output for `1.0.0` — at the default verbosity, exactly this and nothing else:
 
 ```
-Verifying RDLL.dotnet-fast.0.307.0
-Content hash: QT3PE7Md+ibHLWzNCVRpwjDuX38S67xb7TDSv2Z2bXT3+PUWkO+P/ug7p0y4FuqMcHlqcIoZRAiyMI+ND4WLVQ==
+Verifying RDLL.dotnet-fast.1.0.0
+Content hash: WhLgD60/cnglAQfwaMXex+mCRO2cI4d1llIB3Ro8fGo6MbXtPomHwFUbjN5P8rDWgluA0DlYFdSA1fnvrWdkIg==
 
 Signature type: Repository
   Subject Name: CN=NuGet.org Repository by Microsoft, O=NuGet.org Repository by Microsoft, L=Redmond, S=Washington, C=US
@@ -68,7 +68,7 @@ Signature type: Repository
 
 **There is no success line at the default verbosity — check the exit code, not the text.** `0` means
 verified. Add `-v normal` to get an explicit
-`Successfully verified package 'RDLL.dotnet-fast.0.307.0'.`, or `-v detailed` to additionally print
+`Successfully verified package 'RDLL.dotnet-fast.1.0.0'.`, or `-v detailed` to additionally print
 `Service index: https://api.nuget.org/v3/index.json` and `Owners: RDLL` plus the full certificate and
 timestamp chains.
 

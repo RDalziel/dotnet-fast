@@ -221,10 +221,10 @@ runs:
       id: c
       with:
         path: ${{ runner.tool_cache }}/dotnet-fast
-        key: dotnet-fast-${{ runner.os }}-0.307.0
+        key: dotnet-fast-${{ runner.os }}-1.0.0
     - if: steps.c.outputs.cache-hit != 'true'
       shell: pwsh
-      run: dotnet tool install RDLL.dotnet-fast --version 0.307.0 --tool-path "${{ runner.tool_cache }}/dotnet-fast"
+      run: dotnet tool install RDLL.dotnet-fast --version 1.0.0 --tool-path "${{ runner.tool_cache }}/dotnet-fast"
     - shell: pwsh
       run: echo "${{ runner.tool_cache }}/dotnet-fast" >> $env:GITHUB_PATH
 ```

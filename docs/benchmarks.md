@@ -7,7 +7,7 @@ test on your own repository.
 Nothing here is modelled, extrapolated, or rounded up from a different scenario. Where a figure is
 old, the date says so. Where the comparison flatters us, this page says that too.
 
-**Currency, stated up front:** the current release is **0.307.0**, and the most recent recorded
+**Currency, stated up front:** the current release is **1.0.0**, and the most recent recorded
 benchmark run on this page is **2026-07-17**. Releases since then have been correctness fixes, and
 none of them was benchmarked — so every speed figure below is verified as of the date printed next to
 it and has not been re-verified against the version you are installing. The parity table at the bottom
