@@ -107,10 +107,13 @@ See **[docs/commands.md](docs/commands.md)** for the full command reference and 
 for the deep (real-Roslyn) analyzer mode and when it's fast enough to turn on by default.
 **[docs/ported-analyzers.md](docs/ported-analyzers.md)** lists the popular Roslyn analyzers re-implemented
 as native, opt-in rules (no `--deep` needed). If an agent writes some of your code, the
-**[docs/guardrails.md](docs/guardrails.md)** covers the four opt-in rules for that case — no explanatory
-comments, a line budget per method and per file, no magic numbers. They exist because an agent will
+**[docs/guardrails.md](docs/guardrails.md)** covers the six opt-in rules for that case — no explanatory
+comments, a line budget per method and per file, no magic numbers, and budgets on cyclomatic complexity
+and Halstead difficulty. They exist because an agent will
 ignore a style guide but cannot ignore a lint error in CI, and their messages are written to tell the
-agent which design move to make. Build/test
+agent which design move to make. To see where a codebase stands against those budgets and six more —
+including test coverage, CRAP and surviving mutants, read from reports your pipeline already produces —
+run `dotnet-fast metrics` (**[docs/commands.md#metrics](docs/commands.md#metrics)**). Build/test
 CI guides are in **[docs/build-cache.md](docs/build-cache.md)** and
 **[docs/test-sharding.md](docs/test-sharding.md)**; Azure Pipelines-specific capabilities (batched-trigger
 baselines, cache RBAC, `ado-matrix` sharding) are tied together in **[docs/azure-devops.md](docs/azure-devops.md)**.

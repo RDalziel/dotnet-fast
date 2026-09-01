@@ -1,6 +1,6 @@
 # Guardrails — lint rules for agent-written code
 
-Four optional rules, `DF9001`–`DF9004`, for repositories where an agent writes some of the code and a
+Six optional rules, `DF9001`–`DF9006`, for repositories where an agent writes some of the code and a
 human reviews it.
 
 They exist because of one asymmetry: **an agent will happily ignore a style guide, but it cannot
@@ -18,6 +18,8 @@ by default**. Nothing changes in your repository until you ask for it.
 | `DF9002` | A method, constructor, finalizer, operator, local function or accessor over the line budget. | `dotnet_fast_max_lines_per_function` (50) |
 | `DF9003` | A file over the line budget, blank lines excluded. | `dotnet_fast_max_lines_per_file` (250) |
 | `DF9004` | A numeric literal with no name. | `dotnet_fast_magic_number_allowed` (`0,1,-1,2`) |
+| `DF9005` | A member with too many independent paths through it. | `dotnet_fast_max_cyclomatic_complexity` (22) |
+| `DF9006` | A member doing too many different things with too few values. | `dotnet_fast_max_halstead_difficulty` (80) |
 
 ## Enabling them
 
@@ -29,11 +31,15 @@ dotnet_diagnostic.DF9001.severity = warning
 dotnet_diagnostic.DF9002.severity = warning
 dotnet_diagnostic.DF9003.severity = warning
 dotnet_diagnostic.DF9004.severity = warning
+dotnet_diagnostic.DF9005.severity = warning
+dotnet_diagnostic.DF9006.severity = warning
 
 # Thresholds, shown with their defaults — omit any you are happy with.
 dotnet_fast_max_lines_per_function = 50
 dotnet_fast_max_lines_per_file = 250
 dotnet_fast_magic_number_allowed = 0,1,-1,2
+dotnet_fast_max_cyclomatic_complexity = 22
+dotnet_fast_max_halstead_difficulty = 80
 ```
 
 Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one. A bulk
@@ -41,7 +47,7 @@ Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one. A bulk
 is disabled by default — so a repository that already sets a bulk severity does not silently acquire
 four new rule families on upgrade.
 
-All four are **report-only**. `lint --fix` never rewrites code on their account: "extract this into a
+All six are **report-only**. `lint --fix` never rewrites code on their account: "extract this into a
 method" has no mechanical fix, and a tool that guessed at one would do more harm than good.
 
 ## The messages are the feature
@@ -136,6 +142,49 @@ index.
 Attribute arguments and `case` labels are **not** exempt. Both require a compile-time constant, but a
 named `const` satisfies that requirement — so `[MaxLength(255)]` and `case 9:` are precisely the
 sites worth naming.
+
+### `DF9005` — a budget on branching
+
+Cyclomatic complexity counts the independent paths through a member: one for the entry, plus one for
+each `if`, loop, `catch`, ternary, short-circuiting `&&`/`||`/`??`/`?.`, `case` label, switch arm,
+`when` guard and pattern `and`/`or`. A bare `else`, a `default:` label and a `_` arm add nothing —
+they are the path you already counted.
+
+That number is also, exactly, the number of cases a test suite has to cover to exercise the member.
+A member at 40 needs 40 tests. That is usually the argument that lands.
+
+**It is a different measurement from `S3776`**, the cognitive-complexity rule shipped among the
+ported analyzers, and the two disagree on purpose. Six `if`s nested six deep score 21 for cognitive
+complexity and 7 here; the same six written flat score 6 and 7. Cognitive complexity asks *how hard
+is this to read*, cyclomatic asks *how many cases are there*. A long flat `switch` is easy to read
+and still needs a test per arm.
+
+The fix is to reduce branching, not line count: guard clauses that return early, a lookup table or
+polymorphic type in place of a long `switch`, and each self-contained decision extracted into a named
+predicate so the reader sees *why* a branch exists.
+
+### `DF9006` — a budget on density
+
+Halstead difficulty is `(distinct operators / 2) × (total operands / distinct operands)`, computed
+over the member's tokens. It rises with the **variety** of operations in one member, and with how
+often the same few values are re-read — together, the signature of a member juggling several levels
+of abstraction at once.
+
+It is the one limit here that does **not** fall by splitting a member in half: both halves keep the
+same density. It falls when a step is given a name — a well-named helper in place of a chain of
+primitive operations, or a type that owns the values currently being passed around together.
+
+Because the partition of tokens into operators and operands is a choice every implementation makes
+differently, ours is stated rather than left implicit: unnamed leaves (keywords, punctuation,
+operators) are operators; named leaves (identifiers, literals, predefined type names) are operands;
+comments are ignored entirely.
+
+## Seeing where you stand
+
+The guardrails are a ratchet: they stop new violations landing. To see the whole picture — including
+coverage, CRAP and surviving mutants — run [`dotnet-fast metrics`](commands.md#metrics), which scores
+a codebase against ten budgets in one pass and shares its complexity scorers with `DF9005` and
+`DF9006`, so the CI gate and the scoreboard can never disagree about a member.
 
 ## Adopting them without a wall of findings
 

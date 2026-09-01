@@ -14,6 +14,58 @@ The current **stable** line is `1.0.0`.
 > [support matrix](docs/support-matrix.md), measured under a harness that verifies both tools processed
 > the same files and fails the run when they did not.
 
+## 1.1.0 — `metrics`: one scoreboard for the numbers that catch AI slop
+
+A new command, **`dotnet-fast metrics`**, scores a codebase against ten code-health budgets in one
+build-free pass:
+
+```
+dotnet-fast metrics App.sln
+```
+
+Seven of them come straight from your source, measured in the same walk: cyclomatic complexity,
+cognitive complexity, Halstead difficulty, lines per file, dead code, redundant code, and `dynamic`
+usage (C#'s nearest equivalent to TypeScript's `any`). The other three cannot be derived from source
+because they require running your tests — so `metrics` **reads the reports your pipeline already
+produces** and never runs anything itself:
+
+- `--coverage <path>` — a Cobertura report (`coverage.cobertura.xml`), or a directory to search. This
+  also fills in **CRAP**, which multiplies complexity by lack of coverage so that a member which is
+  both complex and untested rises to the top of the list.
+- `--mutation <path>` — a Stryker.NET `mutation-report.json`, or a directory to search.
+
+`--fail-on-budget` turns it into a CI gate; without it the command is report-only and exits 0.
+`--format json` gives the machine-readable form, including the full Halstead figures per member.
+
+**A metric you did not measure is never shown as passing.** Without a coverage report, the coverage
+and CRAP rows read *not measured* and name the flag that would fill them, and `--fail-on-budget`
+ignores them entirely. A board that is green because nothing was checked would be worse than no board.
+
+Budgets default to widely-published values (cyclomatic and cognitive 22, Halstead difficulty 80, 500
+lines per file, 100% coverage, CRAP 25, and zero for the rest) and can be overridden per run on the
+command line or once in `dotnet-fast.json`.
+
+### Two new guardrails: `DF9005` and `DF9006`
+
+The opt-in guardrail family — the rules for repositories where an agent writes the code and a human
+reviews it — gains the two budgets that belong in a per-file CI gate:
+
+| Rule | Reports | Threshold |
+|---|---|---|
+| `DF9005` | A member over 22 independent paths — also the number of cases its tests must cover. | `dotnet_fast_max_cyclomatic_complexity` |
+| `DF9006` | A member over 80 Halstead difficulty — too many different operations over too few values. | `dotnet_fast_max_halstead_difficulty` |
+
+Both are **off by default** and report-only, like the other four, and both share their scorers with
+`metrics`, so the gate and the scoreboard can never disagree about a member. See
+[guardrails.md](docs/guardrails.md).
+
+Note that `DF9005` measures something genuinely different from the `S3776` cognitive-complexity rule
+already shipped among the ported analyzers: a wide flat `switch` scores 25 for cyclomatic complexity
+and 1 for cognitive. One asks how many cases there are, the other how hard it is to read. Both are
+worth knowing.
+
+Nothing existing changed: no command, flag, default, output shape or exit code moved.
+
 ## 1.0.0 — the compatibility promise starts here
 
 **`1.0.0` is `1.0.0-rc.1` plus one fix**, found by the pre-release install verification and described

@@ -75,12 +75,12 @@ still rewrites whole files.
 
 ### Guardrails (opt-in): keeping AI-written code reviewable
 
-Four optional rules for repos where an agent writes the code and a human reviews it. An agent will
+Six optional rules for repos where an agent writes the code and a human reviews it. An agent will
 happily ignore a style guide, but it cannot ignore a lint error in CI — so these are the constraints
 that actually shape what gets generated. Each message is written for the agent that has to fix it: it
 names the design move to make, not just the violation.
 
-All four are **off by default** and report-only. Nothing changes for your repo until you ask for it:
+All six are **off by default** and report-only. Nothing changes for your repo until you ask for it:
 
 ```ini
 # .editorconfig
@@ -89,11 +89,15 @@ dotnet_diagnostic.DF9001.severity = warning   # no explanatory comments
 dotnet_diagnostic.DF9002.severity = warning   # method length
 dotnet_diagnostic.DF9003.severity = warning   # file length
 dotnet_diagnostic.DF9004.severity = warning   # magic numbers
+dotnet_diagnostic.DF9005.severity = warning   # cyclomatic complexity
+dotnet_diagnostic.DF9006.severity = warning   # Halstead difficulty
 
 # Thresholds, shown with their defaults — omit to keep them.
 dotnet_fast_max_lines_per_function = 50
 dotnet_fast_max_lines_per_file = 250
 dotnet_fast_magic_number_allowed = 0,1,-1,2
+dotnet_fast_max_cyclomatic_complexity = 22
+dotnet_fast_max_halstead_difficulty = 80
 ```
 
 | Rule | Reports |
@@ -102,6 +106,8 @@ dotnet_fast_magic_number_allowed = 0,1,-1,2
 | `DF9002` | A method, constructor, operator, local function or accessor over `dotnet_fast_max_lines_per_function` lines (default 50), blank lines excluded. Attribute lines don't count against the budget. |
 | `DF9003` | A file over `dotnet_fast_max_lines_per_file` non-blank lines (default 250) — the single-responsibility principle stated as a measurement. |
 | `DF9004` | A numeric literal with no name. `dotnet_fast_magic_number_allowed` (default `0,1,-1,2`) is matched by value, so `0x02`, `2L` and `2.0` all satisfy a configured `2`. Positions where the syntax already names the value — `const`/`readonly` fields, `enum` members, parameter defaults, array indexes — are exempt. |
+| `DF9005` | A member over `dotnet_fast_max_cyclomatic_complexity` (default 22) independent paths — one per `if`, loop, `catch`, ternary, short-circuit, `case`, switch arm, `when` guard and pattern `and`/`or`. That count is also the number of cases a test suite has to cover. |
+| `DF9006` | A member over `dotnet_fast_max_halstead_difficulty` (default 80). Difficulty rises with the variety of operations in one member and with how often the same values are re-read — the signature of code juggling several levels of abstraction at once. |
 
 Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one; a bulk `dotnet_analyzer_diagnostic`
 key does not, matching how Roslyn treats a disabled-by-default analyzer. Scope them where they fit —
@@ -112,6 +118,10 @@ setting `dotnet_diagnostic.DF9004.severity = none` is a normal thing to want. Su
 Run `dotnet-fast lint --explain DF9002` for the full description of any of them, or see
 **[guardrails.md](guardrails.md)** for what each rule is for, how to adopt them on an existing
 codebase without a wall of findings, and why the messages are written the way they are.
+
+The guardrails stop new violations landing. To see where a codebase stands overall — including
+coverage, CRAP and surviving mutants — use **[`metrics`](#metrics)**, which shares its complexity
+scorers with `DF9005`/`DF9006` so the two can never disagree.
 
 ---
 
@@ -338,6 +348,73 @@ on any repo reports internal/private dead code with near-zero false positives an
 
 See [dead-code.md](dead-code.md) for the full DC-id catalog, the conservative-marking rules,
 framework indirection (`--handler-pattern`), and CI patterns.
+
+---
+
+## `metrics`
+
+Score a codebase against code-health budgets in one pass. Ten numbers, one command, no build:
+
+```bash
+dotnet-fast metrics App.sln                          # the scoreboard (report-only, exits 0)
+dotnet-fast metrics App.sln --fail-on-budget         # exit 1 when a measured budget is exceeded
+dotnet-fast metrics App.sln --format json            # machine-readable
+dotnet-fast metrics App.sln --coverage TestResults   # adds coverage and CRAP
+dotnet-fast metrics App.sln --mutation StrykerOutput # adds surviving mutants
+dotnet-fast metrics App.sln --include-dead-code      # adds the dead-code count
+```
+
+```
+Metric                 Worst  Budget  Status
+Cyclomatic complexity     41   <= 22  7 members over budget
+Cognitive complexity      38   <= 22  5 members over budget
+Halstead difficulty      112   <= 80  3 members over budget
+Lines per file           913  <= 500  11 files over budget
+Test coverage          71.4%    100%  over budget
+CRAP                    96.0   <= 25  9 members over budget
+Surviving mutants          -       0  not measured — pass --mutation <mutation-report.json>
+Dead code                  6       0  6 symbols over budget
+Redundant code             4       0  4 duplicates over budget
+Dynamic typing             2       0  2 uses over budget
+```
+
+Seven of the ten need nothing but your source, and are measured in the same pass:
+
+| Metric | Default budget | What it means |
+|---|---|---|
+| Cyclomatic complexity | ≤ 22 | Independent paths through a member — also the number of cases a test suite must cover. |
+| Cognitive complexity | ≤ 22 | How hard the member is to *follow*; nesting is weighted, so a deep `if` nest scores far above the same branches written flat. |
+| Halstead difficulty | ≤ 80 | Variety of distinct operations, and how often the same values are re-read. |
+| Lines per file | ≤ 500 | Non-blank lines. The single-responsibility principle as a measurement. |
+| Dead code | 0 | Reuses the `dead-code` analysis (opt in with `--include-dead-code` — it is the slow pass). |
+| Redundant code | 0 | Members with byte-identical bodies within one file. |
+| Dynamic typing | 0 | `dynamic` in a type position — C#'s nearest equivalent to TypeScript's `any`. |
+
+The remaining three cannot be derived from source, because they require running your tests. `metrics`
+**reads reports your pipeline already produces** — it never runs `dotnet test` itself:
+
+| Metric | Default budget | Supply it with |
+|---|---|---|
+| Test coverage | 100% | `--coverage <path>` — a Cobertura report (`coverage.cobertura.xml`), or a directory to search. |
+| CRAP | ≤ 25 | Falls out of `--coverage`: `complexity² × (1 − coverage)³ + complexity`. Complex *and* uncovered dominates the list. |
+| Surviving mutants | 0 | `--mutation <path>` — a Stryker.NET `mutation-report.json`, or a directory to search. Counts `Survived` and `NoCoverage`. |
+
+**A metric you did not measure never reads as passing.** Without `--coverage`, the coverage and CRAP
+rows say *not measured* and name the flag that would fill them, and `--fail-on-budget` ignores them.
+A green board that is green because nothing was checked would be worse than no board at all.
+
+| Option | Effect |
+|---|---|
+| `--fail-on-budget` | Exit `1` when any **measured** metric is over budget. Report-only without it. |
+| `--coverage <path>` / `--mutation <path>` | Ingest a Cobertura / Stryker report. A file, or a directory to search recursively. |
+| `--include-dead-code` | Also run the solution-wide dead-code pass. Off by default because it is markedly slower. |
+| `--top <N>` | How many worst offenders to list under each failing metric (default 5). |
+| `--format json` | `{ metrics: [...], worstMembers: [...], summary: {...} }`, with the full Halstead set per member. |
+| `--max-cyclomatic`, `--max-cognitive`, `--max-halstead-difficulty`, `--max-lines-per-file`, `--min-coverage`, `--max-crap` | Override a budget for this run. |
+
+Every budget is a **maximum, exceeded strictly** — a member at exactly 22 is inside a budget of 22.
+The complexity scorers are shared with the `DF9005`/`DF9006` guardrails, so the CI gate and this
+scoreboard can never disagree about a member.
 
 ---
 
