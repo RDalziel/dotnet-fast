@@ -162,7 +162,7 @@ one wave's slice while its dependencies (earlier waves) restore from the cache. 
 cold cache or a foundation-project change — a warm PR build is already restore-dominated, so
 sharding the build itself buys little there. The exact multi-wave YAML shape is still being
 validated against real Azure DevOps pipelines, so it's not reproduced here yet — see
-[build cache § Sharding the build across agents](build-cache.md#configure-the-cache) for the current
+[build cache § Sharding the build across agents](build-cache.md#sharding-the-build-across-agents) for the current
 state.
 
 ## Gate stages on "did anything change?" (`--set-variable`)

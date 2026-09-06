@@ -67,7 +67,8 @@ the build. Copy-paste Actions and Azure Pipelines wiring:
 
 `format`, `style`, `whitespace` and `analyzers` are accepted as `dotnet format`-compatible aliases.
 Add `--json` to any command for machine-readable results and timing; `lint`, `doctor`, `metrics` and
-`dead-dependencies` also emit SARIF for GitHub code scanning. A large set of popular Roslyn analyzers
+`dead-dependencies` also emit SARIF for GitHub code scanning. `lint` ships 153 native CST rules (`DF0001`–`DF0153`), each listed with its `--fix` status on the
+[rules page](https://github.com/RDalziel/dotnet-fast/blob/main/docs/rules.md), and a large set of popular Roslyn analyzers
 is re-implemented natively and runs on the fast path **by default** — no `--deep` needed.
 
 ## Documentation

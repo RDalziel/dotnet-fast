@@ -1,9 +1,19 @@
 # Code-health metrics
 
-`dotnet-fast metrics` scores a codebase against ten budgets in one build-free pass and prints a single
-scoreboard. Seven of the ten come straight from your source; the other three need your tests to have
-run, so `metrics` **reads the reports your pipeline already produces** — it never runs `dotnet test`,
-Stryker, or anything else itself.
+`dotnet-fast metrics` scores a codebase against fourteen budgets in one build-free pass and prints a
+single scoreboard. Eleven of the fourteen come straight from your source; the other three need your
+tests to have run, so `metrics` **reads the reports your pipeline already produces** — it never runs
+`dotnet test`, Stryker, or anything else itself.
+
+These are the `metrics` command's own budgets, set in `dotnet-fast.json`'s `metrics` section — they
+are **not** the `.editorconfig` guardrail thresholds `lint`'s `DF9002`/`DF9003`/`DF9005`/`DF9006` use,
+even though several share a default and a scorer.
+
+The pair most likely to catch you out is the file-length budget, because the two knobs are spelled
+almost the same and their defaults differ: `metrics.maxLinesPerFile` here defaults to **500**, while
+`dotnet_fast_max_lines_per_file` in `.editorconfig` — the one `DF9003` reads — defaults to **250**.
+Setting one never changes the other. See [editorconfig.md](editorconfig.md#two-budget-systems-two-different-numbers)
+for the two systems side by side.
 
 The option table is in [commands.md](commands.md#metrics). This page is how to use it.
 
@@ -29,13 +39,21 @@ Surviving mutants          -       0  not measured — pass --mutation <mutation
 Dead code                  6       0  6 symbols over budget
 Redundant code             4       0  4 duplicates over budget
 Dynamic typing             2       0  2 uses over budget
+Lines per member          74   <= 50  6 members over budget
+Nesting depth              4    <= 3  2 members over budget
+Parameter count             9    <= 7  1 member over budget
+Maintainability index   31.2   >= 20  ok
 ```
+
+The last four rows were appended after the original ten (ids `linesPerMember`/`nestingDepth`/
+`parameterCount`/`maintainabilityIndex`) — the column widths above are unchanged, and every existing
+row still prints byte-for-byte the same line it always has.
 
 **A metric you did not measure never reads as passing.** An unmeasured row says *not measured*, names
 the flag that would fill it, and is ignored by `--fail-on-budget`. A board that is green because
 nothing was checked would be worse than no board.
 
-## The ten metrics
+## The fourteen metrics
 
 | Metric | Default budget | `dotnet-fast.json` key | What it means |
 |---|---|---|---|
@@ -49,10 +67,21 @@ nothing was checked would be worse than no board.
 | Dead code | 0 | `maxDeadCode` | Reuses the [`dead-code`](dead-code.md) analysis; opt in with `--include-dead-code`. |
 | Redundant code | 0 | `maxDuplicateBodies` | Members with byte-identical bodies inside one file. |
 | Dynamic typing | 0 | `maxDynamicUses` | `dynamic` in a type position — C#'s nearest equivalent to TypeScript's `any`. |
+| Lines per member | ≤ 50 | `maxLinesPerMember` | Non-blank lines in one member. |
+| Nesting depth | ≤ 3 | `maxNestingDepth` | Deepest `if`/`for`/`foreach`/`while`/`do`/`switch` nesting in one member; a flat `else if` chain counts as one level. |
+| Parameter count | ≤ 7 | `maxParameters` | Declared parameters on one member. |
+| Maintainability index | ≥ 20 | `minMaintainabilityIndex` | The Microsoft-normalised `0`–`100` figure (`171 - 5.2·ln(volume) - 0.23·cyclomatic - 16.2·ln(lines)`, rescaled), higher is better. The one other floor besides coverage. |
 
 Every budget is a **maximum, exceeded strictly**: a member at exactly 22 is inside a budget of 22.
-Coverage is the one minimum. Budgets resolve **command line > `dotnet-fast.json` > default**, and each
-has a `--max-…` / `--min-…` flag of the same name for a one-off override.
+Test coverage and maintainability index are the two minimums — a member (or the whole run, for
+coverage) *below* the floor is over budget. Budgets resolve **command line > `dotnet-fast.json` >
+default**, and each has a `--max-…` / `--min-…` flag of the same name for a one-off override.
+
+The last four rows were appended after the original ten (never renumbered) once this scoreboard's
+early adopters asked for the figures the CST pass already computed but never surfaced. Every default
+is lifted from a threshold this repo already ships elsewhere — `linesPerMember` from the `DF9002`
+guardrail, `nestingDepth`/`parameterCount` from the native `S134`/`S107` lint ports, and
+`maintainabilityIndex`'s 20 from the Visual Studio "green" floor — not invented for this table.
 
 ## Where the reports come from
 
@@ -127,6 +156,45 @@ tab alongside your lint findings. See [code-scanning.md](code-scanning.md) for t
 Halstead figures per member and an `offenders` array on each metric row (sized by `--top`) naming the
 worst members or files by name, line and value.
 
+`--top all` (or `--top unlimited`) lists **every** offender behind an over-budget row instead of the
+default 5 — `offenders.length` then equals the row's `overCount` exactly. This is the one expensive
+flag here, by orders of magnitude on a large solution: expect 40k–150k tokens rather than the usual
+~1.3k. `worstMembers` does not follow it past its own fixed cap of 5, so it stays a small diagnostic
+sample regardless of `--top`.
+
+Approximate costs, so you can budget for them:
+
+| Output | Size |
+|---|---|
+| text (default) | ~1.3k tokens |
+| agent text (`--agent`, or auto-detected in an AI shell) | ~0.9k tokens |
+| `--format json --top 0` (the agent recipe — rows and summary, no offender lists) | ~1.2k tokens |
+| `--by-project` block | ~1 line per project |
+| `--top all` | 40k–150k tokens |
+
+### `--by-project`: attribute the board to a solution's projects
+
+Opt-in — nothing an existing agent or CI job reads today moves until you pass it:
+
+```bash
+dotnet-fast metrics App.sln --by-project
+```
+
+Text gets one appended line per project, worst rows first, `— ok` when a project is clean. JSON gets
+a top-level `projects` array, present only under the flag: `[{ "name": "App.Core", "metrics": [{ "id",
+"value", "overBudget", "overCount" }] }]` — no offenders, since an offender already names its file.
+Every per-project figure comes from the *same* row builders the whole board uses, so it can never
+disagree with `--project App.Core` run alone. Coverage, surviving mutants and dead code are whole-run
+figures and are **not** repeated on every project line — they read as not measured there, the same way
+an absent report reads on the whole board.
+
+### Agent-mode output
+
+In an AI shell (or with `--agent`), the text report opens with one line — `metrics: 5 of 14 over
+budget, 3 not measured` — lists only the failing rows, then one line naming everything that was never
+measured. Offenders are capped at 3 per row regardless of `--top`. `--human` forces the full board
+even in an AI shell; `--format json` bypasses agent mode entirely either way.
+
 ## Budgets in `dotnet-fast.json`
 
 Set them once at the repository root instead of repeating flags in every pipeline:
@@ -143,7 +211,11 @@ Set them once at the repository root instead of repeating flags in every pipelin
     "maxSurvivingMutants": 0,
     "maxDeadCode": 0,
     "maxDuplicateBodies": 0,
-    "maxDynamicUses": 0
+    "maxDynamicUses": 0,
+    "maxLinesPerMember": 40,
+    "maxNestingDepth": 3,
+    "maxParameters": 6,
+    "minMaintainabilityIndex": 30
   }
 }
 ```
@@ -160,6 +232,111 @@ run everything else goes through.
 They share their scorers — the complexity code behind `DF9005`/`DF9006` *is* the code behind the
 `metrics` rows — so the gate and the scoreboard can never disagree about a member. The usual pairing
 is `metrics` for the direction of travel and the guardrails to stop new violations landing.
+
+## Repository identity
+
+`--format json` always carries two fields in `summary`: `schemaVersion` (the JSON shape's own
+version) and `repository` (this run's name). `repository` is inferred — the git `origin` remote's
+repo name, then the directory name — or set explicitly:
+
+```bash
+dotnet-fast metrics App.sln --format json --repository-name my-service
+```
+
+Set `--repository-name` in CI so a later estate rollup (below) can tell repositories apart.
+
+## Estate rollup: `metrics --merge`
+
+If you run `metrics` across many repositories, `--merge` combines their `--format json` reports into
+one view instead of measuring a codebase itself. It runs offline: no server, nothing to stand up —
+every repository's own CI already produces the report `--merge` reads.
+
+```bash
+# each repository's CI, unchanged except naming itself:
+dotnet-fast metrics . --format json --repository-name my-service > metrics.json
+# … CI publishes metrics.json as a build artifact …
+
+# a central job, after downloading every repository's artifact into artifacts/<repo>/metrics.json:
+dotnet-fast metrics --merge "artifacts/*/metrics.json" --format text
+dotnet-fast metrics --merge "artifacts/*/metrics.json" --format json
+dotnet-fast metrics --merge "artifacts/*/metrics.json" --format html > estate.html
+```
+
+```
+Estate: 3 repositories, 0 skipped
+
+payments-api  4/10 over budget
+  cyclomaticComplexity=41! cognitiveComplexity=38! halsteadDifficulty=92.1! linesPerFile=913!
+  redundantCode=4! dynamicTyping=0 testCoverage=71.4! crap=96.0! survivingMutants=2!
+checkout-web  1/9 over budget
+  cyclomaticComplexity=18 cognitiveComplexity=15 halsteadDifficulty=54.0 linesPerFile=612!
+  redundantCode=0 dynamicTyping=0
+inventory-svc  0/7 over budget
+  cyclomaticComplexity=12 cognitiveComplexity=9 halsteadDifficulty=41.2 linesPerFile=280
+  redundantCode=0 dynamicTyping=0
+
+Budgets breached across the estate:
+  Cyclomatic complexity: 1/3 repositories over budget
+  Cognitive complexity: 1/3 repositories over budget
+  Halstead difficulty: 1/3 repositories over budget
+  Lines per file: 2/3 repositories over budget
+  Redundant code: 1/3 repositories over budget
+  Dynamic typing: 0/3 repositories over budget
+  Test coverage: 1/1 repositories over budget
+  CRAP: 1/1 repositories over budget
+  Surviving mutants: 1/1 repositories over budget
+```
+
+`!` marks a repository over its own budget for that column. `--merge` accepts a glob (`*`, `**`,
+`?`), repeatable, and takes priority over every measurement flag — nothing else on the command line
+matters once `--merge` is given. `--fail-on-budget` still exits `1` when any repository is over any
+budget. `--format sarif` is not available with `--merge` (an estate row has nowhere to point a
+physical location); use `text`, `json`, or `html`.
+
+**Which columns appear is decided by the data, never hardcoded.** Cyclomatic, cognitive, Halstead,
+lines per file, redundant code and dynamic typing come from source alone, so almost every repository
+carries them. Test coverage, CRAP and surviving mutants need a test or mutation run behind
+`--coverage`/`--mutation`, so **a column for one of those three appears only when at least one
+repository in the merge actually measured it** — and inside that column, a repository that did not
+measure it simply has no cell there, not a "-" one. `inventory-svc` above never ran `--mutation`, so
+it has no `survivingMutants` value; that is not the same as passing, and the estate view is built
+specifically not to let it read that way. A repository that later wires up coverage starts showing
+that column automatically — nothing to configure. Dead code stays behind `--include-dead-code` in
+every underlying run: it is the one expensive pass, so an estate reflects only the repositories that
+chose to pay for it.
+
+A file `--merge` cannot use — one predating this feature (no `schemaVersion`), one from a newer
+`dotnet-fast` this build does not understand, or anything else unreadable — is **never silently
+merged**. It is named with its reason, on stderr and in the output's `skipped` list, and the rest of
+the estate still renders.
+
+## Machine-readable estate output
+
+`--merge --format json` gives:
+
+```json
+{
+  "schemaVersion": 1,
+  "repositories": [
+    {
+      "repository": "payments-api",
+      "overCount": 4,
+      "measuredCount": 10,
+      "budgets": {
+        "cyclomaticComplexity": { "value": 41.0, "overBudget": true }
+      }
+    }
+  ],
+  "budgets": {
+    "cyclomaticComplexity": { "label": "Cyclomatic complexity", "repositoriesMeasured": 3, "repositoriesOverBudget": 1 }
+  },
+  "skipped": [{ "file": "artifacts/old-service/metrics.json", "reason": "missing summary.schemaVersion — this report predates the estate-merge feature; re-run `metrics --format json` to regenerate it" }],
+  "summary": { "repositories": 3, "skipped": 1, "overBudget": true }
+}
+```
+
+A repository's `budgets` object carries only the ids it measured — same no-placeholder rule as the
+text view.
 
 ---
 

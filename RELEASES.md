@@ -2,7 +2,7 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.2.0`. Notes for every `0.x` release are in
+The current **stable** line is `1.3.0`. Notes for every `0.x` release are in
 [RELEASES-0.x.md](RELEASES-0.x.md).
 
 > **Standing correction (2026-08-03): every whole-repository parity percentage published in an entry
@@ -14,6 +14,73 @@ The current **stable** line is `1.2.0`. Notes for every `0.x` release are in
 > that carried the headline claims; the only current figures are in the
 > [support matrix](docs/support-matrix.md), measured under a harness that verifies both tools processed
 > the same files and fails the run when they did not.
+
+## 1.3.0 — 2026-09-03
+
+**Action required if `metrics` gates your build: re-run `dotnet-fast metrics --write-baseline` before
+you upgrade a baseline you rely on.** The scoreboard grows from ten budgets to fourteen — a baseline
+recorded before this release never mentions the four new ids, so they are judged against their plain
+budget the first time this build measures them, exactly like any other newly-measured row. That is
+usually the right behaviour, but it means a repository that was previously green under `--baseline`
+can now fail on debt the ratchet never saw. Re-running `--write-baseline` records where the four new
+rows stand today and keeps the ratchet meaning what it always has.
+
+### `metrics` — four new rows, `--top all`, `--by-project`
+
+- **Four rows appended** (never renumbered): lines per member (≤ 50), nesting depth (≤ 3), parameter
+  count (≤ 7), and maintainability index (≥ 20 — a floor, like coverage). Every default is lifted from
+  a threshold this tool already ships elsewhere (the `DF9002` guardrail, the native `S134`/`S107` lint
+  ports), not invented. New `--max-lines-per-member` / `--max-nesting-depth` / `--max-parameters` /
+  `--min-maintainability-index` flags and `dotnet-fast.json` keys override them; the text board's
+  column widths are unchanged and every one of the original ten lines still prints byte-for-byte what
+  it always has.
+- **`--top all`** (or `--top unlimited`) lists every offender behind an over-budget row instead of the
+  default 5 — the only expensive flag here, by orders of magnitude on a large solution.
+  `worstMembers` stays capped at 5 regardless, so it cannot grow into a multi-megabyte JSON array.
+- **`--by-project`** (opt-in) breaks the board down one line per project — text gets an appended
+  block, JSON gets an appended top-level `projects` array. Whole-run figures (coverage, surviving
+  mutants, dead code) are not repeated per project; they read as not measured there. Never affects the
+  exit code.
+- Agent-mode output now opens with a one-line summary and names what was never measured, and caps
+  offenders at 3 per row regardless of `--top`.
+### The seventh guardrail, and one-command adoption
+
+**New guardrail: `DF9007`, cognitive complexity.** Of the ten published code-health budgets, the
+lint gate previously covered three: cyclomatic complexity (`DF9005`), Halstead difficulty (`DF9006`)
+and lines-per-file (`DF9003`). Cognitive complexity had no configurable guardrail at all — the closest
+thing was the `S3776` port, pinned at a fixed threshold of 15 on a different config axis. `DF9007`
+closes that gap: opt-in like the rest of the family, default threshold 22, configured with
+`dotnet_fast_max_cognitive_complexity`, scored by the same code `S3776` and `dotnet-fast metrics` use
+so all three can never disagree about a member. See [guardrails.md](docs/guardrails.md).
+
+Two more budgets — redundant code and dynamic typing — were assessed for guardrails of their own
+(`DF9008`/`DF9009`) and deliberately **not built**: `S4144` (identical member bodies) and `PH2044`
+(the `dynamic` keyword) already cover them, and both ports are on by default, so a guardrail twin
+would double-report the same defect for anyone who has not disabled the port. Use `S4144`/`PH2044`
+for those two.
+
+**One-command adoption: `editorconfig recommend --guardrails`.** Adopting the guardrail family used to
+mean switching on six rules (now seven) and setting five thresholds by hand, one of which (lines per
+file) has always meant something different from the published SLOC budget — the rule's own default
+is 250, the budget is 500. `dotnet-fast editorconfig recommend --guardrails --write` now appends the
+whole block in one command: every `DF900x.severity = warning` line, and every threshold stated
+explicitly at the published budget number (`dotnet_fast_max_lines_per_file = 500` included). Same
+`--write` contract as the existing `recommend` command — appends, never overwrites, idempotent on a
+second run.
+### `metrics`: estate rollup across repositories (`metrics --merge`)
+
+`metrics --format json` now appends two fields to its `summary`: `schemaVersion` and `repository`
+(inferred from the git `origin` remote, overridable with `--repository-name`). New
+`metrics --merge <glob>` reads many repositories' own `--format json` reports — offline, no server —
+and renders one combined view (`text`, `json`, or a self-contained `html` page) sorted worst-first,
+with a per-budget breach summary across the estate. Only budgets a source-only pass can see (source
+statics and the opt-in dead-code pass) appear for every repository that ran them; the three
+budgets that need a test or mutation run (coverage, CRAP, surviving mutants) appear as a column only
+where at least one repository actually measured them, and never as a placeholder for the rest — a
+blank column reads as "not measured", never as a pass. A file `--merge` cannot understand (missing or
+unrecognised `schemaVersion`) is skipped with a clear reason, never silently merged. Everything here
+is additive: a plain `metrics` run with no `--merge` is unchanged. See [metrics.md](docs/metrics.md)
+and [ci.md](docs/ci.md).
 
 ## 1.2.0 — 2026-09-01
 

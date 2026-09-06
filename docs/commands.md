@@ -80,8 +80,11 @@ Useful options:
 | `--only-active-analyzers` | Report only the analyzer diagnostics your `.editorconfig` has actually enabled, instead of the full bundled superset. |
 | `--record-findings` | Append this run's finding counts to the configured timings store, so [`insights`](#insights) can show the trend, the top rules and the fix-adoption rate. Off by default; records counts only, never your code. |
 
-Findings honor your `.editorconfig` — a rule set to `none` is suppressed, and `warning`/`error`
-promotions are reflected, just like a real build.
+The complete native rule catalog, with each rule's `--fix` status and the in-source suppression comments, is on
+[rules.md](rules.md).
+
+Findings honor your `.editorconfig` severity settings, just like a real build — see
+[editorconfig.md](editorconfig.md) for the full severity vocabulary and precedence rules.
 
 **Changed-line scoping.** On a pull request (`--ci` PR, `--pr-base`, `--base`) and for `--staged`, the
 report covers only the lines you actually changed — pre-existing findings on untouched lines of a file
@@ -92,11 +95,11 @@ still rewrites whole files.
 
 ### Guardrails (opt-in): keeping AI-written code reviewable
 
-Six optional rules for repos where an agent writes the code and a human reviews it: no explanatory
+Seven optional rules for repos where an agent writes the code and a human reviews it: no explanatory
 comments, a line budget per method and per file, no magic numbers, and budgets on cyclomatic
-complexity and Halstead difficulty. An agent will happily ignore a style guide, but it cannot ignore a
-lint error in CI. All six are **off by default** and report-only — nothing changes for your repo until
-you switch one on:
+complexity, Halstead difficulty and cognitive complexity. An agent will happily ignore a style guide,
+but it cannot ignore a lint error in CI. All seven are **off by default** and report-only — nothing
+changes for your repo until you switch one on:
 
 ```ini
 # .editorconfig
@@ -107,6 +110,7 @@ dotnet_diagnostic.DF9003.severity = warning   # file length
 dotnet_diagnostic.DF9004.severity = warning   # magic numbers
 dotnet_diagnostic.DF9005.severity = warning   # cyclomatic complexity
 dotnet_diagnostic.DF9006.severity = warning   # Halstead difficulty
+dotnet_diagnostic.DF9007.severity = warning   # cognitive complexity
 
 # Thresholds, shown with their defaults — omit to keep them.
 dotnet_fast_max_lines_per_function = 50
@@ -114,7 +118,13 @@ dotnet_fast_max_lines_per_file = 250
 dotnet_fast_magic_number_allowed = 0,1,-1,2
 dotnet_fast_max_cyclomatic_complexity = 22
 dotnet_fast_max_halstead_difficulty = 80
+dotnet_fast_max_cognitive_complexity = 22
 ```
+
+Or skip the hand-editing: `dotnet-fast editorconfig recommend --guardrails --write` appends all seven
+at once, with every threshold stated explicitly at the published code-health budget number (including
+`dotnet_fast_max_lines_per_file = 500`, the published SLOC budget — this rule's own bare default,
+kept for backward compatibility, is 250).
 
 | Rule | Reports | Threshold key |
 |---|---|---|
@@ -124,10 +134,15 @@ dotnet_fast_max_halstead_difficulty = 80
 | `DF9004` | a numeric literal with no name | `dotnet_fast_magic_number_allowed` |
 | `DF9005` | a member over 22 independent paths | `dotnet_fast_max_cyclomatic_complexity` |
 | `DF9006` | a member over 80 Halstead difficulty | `dotnet_fast_max_halstead_difficulty` |
+| `DF9007` | a member over 22 cognitive complexity (nesting-weighted) | `dotnet_fast_max_cognitive_complexity` |
 
-Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one; a bulk `dotnet_analyzer_diagnostic`
-key does not, matching how Roslyn treats a disabled-by-default analyzer. Run
+Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one — see
+[editorconfig.md](editorconfig.md#precedence-which-severity-wins) for why a bulk key can't. Run
 `dotnet-fast lint --explain DF9002` for any rule's full description.
+
+Two more of the ten published code-health budgets — redundant code and dynamic typing — are covered
+by the always-on ported analyzers `S4144` and `PH2044` instead of a dedicated guardrail; see
+[guardrails.md](guardrails.md#redundant-code-and-dynamic-typing-are-covered-elsewhere) for why.
 
 **[guardrails.md](guardrails.md)** is the full page: what each rule reports and why, how to scope them
 to the projects where they earn their keep (test projects legitimately carry magic numbers and long
@@ -136,7 +151,7 @@ are written for the agent that has to act on them.
 
 The guardrails stop new violations landing. To see where a codebase stands overall — including
 coverage, CRAP and surviving mutants — use **[`metrics`](#metrics)**, which shares its complexity
-scorers with `DF9005`/`DF9006` so the two can never disagree.
+scorers with `DF9005`/`DF9006`/`DF9007` so the two can never disagree.
 
 ---
 
@@ -368,10 +383,10 @@ framework indirection (`--handler-pattern`), and CI patterns.
 
 ## `metrics`
 
-Score a codebase against ten code-health budgets in one build-free pass. Seven come straight from your
-source; the other three are read from the coverage and mutation reports your pipeline already
-produces. **[metrics.md](metrics.md)** is the full guide — the ten metrics, where each report file
-lands, the CI gate and the baseline ratchet. This is the option reference.
+Score a codebase against fourteen code-health budgets in one build-free pass. Eleven come straight
+from your source; the other three are read from the coverage and mutation reports your pipeline
+already produces. **[metrics.md](metrics.md)** is the full guide — all fourteen metrics, where each
+report file lands, `--by-project`, the CI gate and the baseline ratchet. This is the option reference.
 
 ```bash
 dotnet-fast metrics App.sln                          # the scoreboard (report-only, exits 0)
@@ -379,6 +394,7 @@ dotnet-fast metrics App.sln --fail-on-budget         # exit 1 when a measured bu
 dotnet-fast metrics App.sln --coverage TestResults   # adds coverage and CRAP
 dotnet-fast metrics App.sln --mutation StrykerOutput # adds surviving mutants
 dotnet-fast metrics App.sln --include-dead-code      # adds the dead-code count
+dotnet-fast metrics App.sln --by-project             # one line per project, appended
 dotnet-fast metrics App.sln --format json            # machine-readable
 ```
 
@@ -394,6 +410,10 @@ Surviving mutants          -       0  not measured — pass --mutation <mutation
 Dead code                  6       0  6 symbols over budget
 Redundant code             4       0  4 duplicates over budget
 Dynamic typing             2       0  2 uses over budget
+Lines per member          74   <= 50  6 members over budget
+Nesting depth              4    <= 3  2 members over budget
+Parameter count             9    <= 7  1 member over budget
+Maintainability index   31.2   >= 20  ok
 ```
 
 **A metric you did not measure never reads as passing.** An unmeasured row says *not measured*, names
@@ -407,16 +427,22 @@ nothing was checked would be worse than no board at all.
 | `--coverage-format <FORMAT>` | Which coverage format `--coverage` holds: `auto` (default), `cobertura`, `opencover`, `lcov`, `coverlet-json`. `auto` sniffs the report's own content rather than trusting its filename. |
 | `--mutation <path>` | Ingest a Stryker.NET `mutation-report.json`, or a directory to search. Repeatable. Counts `Survived` and `NoCoverage` as surviving. |
 | `--include-dead-code` | Also run the solution-wide dead-code pass. Off by default because it is markedly slower. |
-| `--top <N>` | How many worst offenders to list under each failing metric, and how many go in the JSON `offenders` array (default 5). |
-| `--format <FORMAT>` | `text` (default), `json`, or `sarif`. `json` is `{ metrics, worstMembers, summary }` with the full Halstead set per member; `sarif` is SARIF 2.1.0 on stdout for [code scanning](code-scanning.md). |
+| `--by-project` | Also break the board down one line per project (JSON: an appended `projects` array). Off by default; never affects the exit code. |
+| `--top <N>` | How many worst offenders to list under each failing metric, and how many go in the JSON `offenders` array (default 5). `all` (or `unlimited`) lists every one — the only expensive option here, by orders of magnitude on a large solution. `worstMembers` stays capped at 5 regardless. |
+| `--format <FORMAT>` | `text` (default), `json`, or `sarif`. `json` is `{ metrics, worstMembers, summary }` with the full Halstead set per member; `sarif` is SARIF 2.1.0 on stdout for [code scanning](code-scanning.md). `html` is valid only with `--merge`. |
+| `--merge <glob>` | Estate mode: read many repositories' own `--format json` reports and render one combined view, sorted worst-first, with a per-budget breach summary. Repeatable. Offline — no server, no storage. A report whose `schemaVersion` this build does not recognise is skipped with a reason rather than silently merged. Renders as `text`, `json` or a self-contained `html` page. |
+| `--repository-name <name>` | The name this run reports itself as, for `--merge`. Inferred from the git `origin` remote, falling back to the directory name, so it is usually unnecessary. |
 | `--max-cyclomatic`, `--max-cognitive`, `--max-halstead-difficulty`, `--max-lines-per-file`, `--min-coverage`, `--max-crap` | Override a scored budget for this run. |
 | `--max-surviving-mutants`, `--max-dead-code`, `--max-duplicate-bodies`, `--max-dynamic-uses` | Override a *count* budget for this run — surviving mutants, dead symbols, duplicate bodies, `dynamic` uses. Each defaults to `0`. |
+| `--max-lines-per-member`, `--max-nesting-depth`, `--max-parameters`, `--min-maintainability-index` | Override one of the four appended budgets — defaults 50, 3, 7, and 20 (a floor). |
 | `--write-baseline <file>` | Record where the codebase stands today, for the ratchet below. |
 | `--baseline <file>` | With `--fail-on-budget`, fail only on a row that got **worse** than the baseline. A row over budget but no worse reports `over budget (no worse than baseline)` and does not fail the build. |
 
 Every budget is a **maximum, exceeded strictly** — a member at exactly 22 is inside a budget of 22 —
 and resolves command line > `dotnet-fast.json` > default. The complexity scorers are shared with the
-`DF9005`/`DF9006` guardrails, so the CI gate and this scoreboard can never disagree about a member.
+`DF9005`/`DF9006`/`DF9007` guardrails, so the CI gate and this scoreboard can never disagree about a
+member. These are `metrics`' own budgets (`dotnet-fast.json`'s `metrics` section) — not the
+`.editorconfig` guardrail thresholds `lint` uses; see [editorconfig.md](editorconfig.md).
 
 Files `metrics` could not read (a non-UTF-8 file, a permission error) and files whose C# does not
 parse are counted and reported rather than skipped silently — as a footer line, and as
@@ -533,7 +559,9 @@ and a hand-written hook is never clobbered without `--force`. Honors `core.hooks
 
 ## `editorconfig`
 
-Inspect, infer, or seed your `.editorconfig`.
+Inspect, infer, or seed your `.editorconfig`. For the full `.editorconfig`/`.globalconfig` precedence
+chain, severity vocabulary, and this tool's own threshold keys, see
+**[editorconfig.md](editorconfig.md)** — this is the option reference for the subcommands below.
 
 ```bash
 dotnet-fast editorconfig explain src/Program.cs     # why is (or isn't) an option applying?
@@ -541,6 +569,7 @@ dotnet-fast editorconfig init                       # infer one from the existin
 dotnet-fast editorconfig init src --write            # ...or write src/.editorconfig
 dotnet-fast editorconfig recommend                  # print the curated ported-analyzer profile
 dotnet-fast editorconfig recommend --write           # ...or append it to ./.editorconfig
+dotnet-fast editorconfig recommend --guardrails --write  # ...or the guardrail-adoption profile instead
 ```
 
 **`explain <file>`** prints the `.editorconfig`/`.globalconfig` chain that resolves for a file (in
@@ -556,6 +585,13 @@ tabs vs spaces, indent width, line endings, trailing-newline habit — emitting 
 high-signal bug/dead-code/redundancy rules on at `warning`, subjective style and documentation
 rules off — with reasoning and doc links. `--write` appends it to `<target>/.editorconfig`. See
 [ported-analyzers.md](ported-analyzers.md).
+
+**`recommend --guardrails [target]`** prints a different profile instead: every AI-guardrail rule
+(`DF9001`-`DF9007`) enabled at the published code-health budget numbers, each stated explicitly
+rather than left to the rule's own default — including `dotnet_fast_max_lines_per_file = 500`, the
+published SLOC budget, not the rule's own bare default of 250. `--write` appends it the same way,
+idempotently (a second run is a no-op) and without ever overwriting an existing file. See
+[guardrails.md](guardrails.md#adopting-them-without-a-wall-of-findings).
 
 > **Changed in v0.306.0 — inline comments.** `.editorconfig` and `.globalconfig` are now parsed the
 > way Roslyn parses them, so a trailing comment no longer voids the line it is on:

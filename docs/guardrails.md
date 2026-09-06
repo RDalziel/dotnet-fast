@@ -1,6 +1,6 @@
 # Guardrails — lint rules for agent-written code
 
-Six optional rules, `DF9001`–`DF9006`, for repositories where an agent writes some of the code and a
+Seven optional rules, `DF9001`–`DF9007`, for repositories where an agent writes some of the code and a
 human reviews it.
 
 They exist because of one asymmetry: **an agent will happily ignore a style guide, but it cannot
@@ -20,6 +20,11 @@ by default**. Nothing changes in your repository until you ask for it.
 | `DF9004` | A numeric literal with no name. | `dotnet_fast_magic_number_allowed` (`0,1,-1,2`) |
 | `DF9005` | A member with too many independent paths through it. | `dotnet_fast_max_cyclomatic_complexity` (22) |
 | `DF9006` | A member doing too many different things with too few values. | `dotnet_fast_max_halstead_difficulty` (80) |
+| `DF9007` | A member that is too hard to read, weighted by nesting. | `dotnet_fast_max_cognitive_complexity` (22) |
+
+Two more of the ten published code-health budgets — redundant code and dynamic typing — are
+deliberately **not** guardrails here; see
+[Redundant code and dynamic typing](#redundant-code-and-dynamic-typing-are-covered-elsewhere) below.
 
 ## Enabling them
 
@@ -33,6 +38,7 @@ dotnet_diagnostic.DF9003.severity = warning
 dotnet_diagnostic.DF9004.severity = warning
 dotnet_diagnostic.DF9005.severity = warning
 dotnet_diagnostic.DF9006.severity = warning
+dotnet_diagnostic.DF9007.severity = warning
 
 # Thresholds, shown with their defaults — omit any you are happy with.
 dotnet_fast_max_lines_per_function = 50
@@ -40,14 +46,19 @@ dotnet_fast_max_lines_per_file = 250
 dotnet_fast_magic_number_allowed = 0,1,-1,2
 dotnet_fast_max_cyclomatic_complexity = 22
 dotnet_fast_max_halstead_difficulty = 80
+dotnet_fast_max_cognitive_complexity = 22
 ```
+
+Or run `dotnet-fast editorconfig recommend --guardrails --write` to append all seven at once, with
+every threshold stated at the published code-health budget number rather than left to the rule's own
+default — see [Adopting them without a wall of findings](#adopting-them-without-a-wall-of-findings).
 
 Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one. A bulk
 `dotnet_analyzer_diagnostic.severity` key does **not**, mirroring how Roslyn treats an analyzer that
 is disabled by default — so a repository that already sets a bulk severity does not silently acquire
-four new rule families on upgrade.
+seven new rule families on upgrade.
 
-All six are **report-only**. `lint --fix` never rewrites code on their account: "extract this into a
+All seven are **report-only**. `lint --fix` never rewrites code on their account: "extract this into a
 method" has no mechanical fix, and a tool that guessed at one would do more harm than good.
 
 ## The messages are the feature
@@ -179,17 +190,63 @@ differently, ours is stated rather than left implicit: unnamed leaves (keywords,
 operators) are operators; named leaves (identifiers, literals, predefined type names) are operands;
 comments are ignored entirely.
 
+### `DF9007` — a budget on nesting
+
+Cognitive complexity is `S3776`'s measure, scored by the same code: unlike `DF9005`, it **weights
+nesting**. `if`/`for`/`foreach`/`while`/`do`/`switch`/`catch` each cost `1 + current nesting depth`;
+`else`/`else if` cost a flat `+1` with no nesting term; entering any qualifying body raises nesting for
+what is inside it. Six `if`s nested six deep score 21; the same six written flat score 6.
+
+That is the point: it asks *how hard is this to read*, where `DF9005` asks *how many cases are there*.
+A long flat `switch` can score low here and still need a test per arm — the two rules disagree on
+purpose, and both are worth having.
+
+The fix is to reduce **nesting**, not branch count: guard clauses that return early instead of wrapping
+the rest of a body in an `if`, inverting a condition to flatten an `else`, and extracting a deeply
+nested block into its own well-named method so the reader is never more than a level or two deep at
+once.
+
+Measured over the member's `body`; an expression-bodied member (`=>`) has none and is not measured,
+matching `S3776`. Shares its scorer with `S3776` and `dotnet-fast metrics`, so no two of the three can
+disagree about a member.
+
+## Redundant code and dynamic typing are covered elsewhere
+
+Two more of the ten published code-health budgets — redundant code and dynamic typing — could in
+principle become `DF9008`/`DF9009`. They do not, on purpose: **[`S4144`](ported-analyzers.md)** already
+reports identical member bodies and **[`PH2044`](ported-analyzers.md)** already reports the `dynamic`
+keyword, and both are ported analyzers that are on **by default** (opt-out, unlike this opt-in family).
+A guardrail duplicating either detector would fire twice on the same line for anyone who has not
+disabled the port — two findings for one defect is a bug, not a second opinion — and there is no
+narrower or differently-scoped version of either check worth building: the ports already cover the
+budget's full scope, so a second implementation would only be a second place for the same logic to
+drift from the first. So: enable `S4144` and `PH2044` (on by default; nothing to switch on) to cover
+those two budgets, and use `DF9001`–`DF9007` above for the other five.
+
 ## Seeing where you stand
 
 The guardrails are a ratchet: they stop new violations landing. To see the whole picture — including
 coverage, CRAP and surviving mutants — run [`dotnet-fast metrics`](commands.md#metrics), which scores
-a codebase against ten budgets in one pass and shares its complexity scorers with `DF9005` and
-`DF9006`, so the CI gate and the scoreboard can never disagree about a member.
+a codebase against ten budgets in one pass and shares its complexity scorers with `DF9005`, `DF9006`
+and `DF9007`, so the CI gate and the scoreboard can never disagree about a member.
+
+**One thing they do not share: the budgets themselves.** `dotnet_fast_max_lines_per_file` here
+(`DF9003`, default 250) and `metrics.maxLinesPerFile` (default 500) are two independent numbers that
+never read each other, even though both are called a "line budget". See
+[editorconfig.md](editorconfig.md#two-budget-systems-two-different-numbers) for the full picture,
+including why cyclomatic and Halstead currently agree and lines-per-file does not.
 
 ## Adopting them without a wall of findings
 
-Turning all six on across an existing codebase will produce a lot of output. Two approaches that
-work:
+Turning all seven on across an existing codebase will produce a lot of output. Three approaches that
+work, from least to most effort:
+
+**Let the tool write the whole block.** `dotnet-fast editorconfig recommend --guardrails --write`
+appends every `DF900x.severity = warning` line plus every threshold — each stated explicitly at the
+published code-health budget number, including `dotnet_fast_max_lines_per_file = 500` (the published
+SLOC budget; this rule's own bare default, kept for backward compatibility, is 250). Idempotent:
+running it again when the profile is already present is a no-op, and it only ever appends, never
+overwrites, an existing `.editorconfig`.
 
 **Scope them to where they earn their keep.** Test projects legitimately carry magic numbers and long
 fixtures:
@@ -232,5 +289,8 @@ must never have.
 ## Related
 
 - [commands.md](commands.md#lint) — the full `lint` reference
+- [commands.md](commands.md#editorconfig) — `editorconfig recommend --guardrails`, the one-command
+  adoption profile
 - [ported-analyzers.md](ported-analyzers.md) — the Roslyn analyzers re-implemented natively, which
-  are on by default and are a different thing entirely
+  are on by default and are a different thing entirely; includes `S4144` and `PH2044`, which cover
+  the redundant-code and dynamic-typing budgets instead of a `DF900x` guardrail

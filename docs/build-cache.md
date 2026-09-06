@@ -275,26 +275,63 @@ key-format version (`keyformat=` in the text header, `keyFormatVersion` in `--js
 key-format change invalidates prior entries (a one-time cold rebuild), and it is visible in the report
 before the run.
 
-**Sharding the build across agents.** For a cold cache or a foundation change, `build --format
-matrix`/`--auto-shards` partitions the affected build's closure into topological **layers** (waves) and
-shards each layer; `build --layer L --shard I --of N` builds one wave's slice while its dependencies
-(earlier waves) restore from the cache. The pipeline runs the layers as sequential waves. Mainly helps
-cold/foundation builds (warm PR builds are already restore-dominated); the exact multi-wave YAML is
-still being validated against real Azure DevOps pipelines.
+## Sharding the build across agents
+
+`dotnet-fast build` runs on one agent, so a cold cache or a foundation change compiles the whole
+miss set serially on the critical path. `build --format matrix`/`--auto-shards` partitions the
+affected build's transitive closure into **topological layers** (waves) and shards each layer across
+agents:
+
+```bash
+# Emit a build job-matrix: each leg is one (layer, shard) slice.
+dotnet-fast build --projects-file affected.proj --auto-shards --max-shards 8 --format matrix .
+#   { "include": [ {layer,shard,totalShards}, ... ] }      (--ado-matrix for Azure DevOps)
+
+# Each agent builds its slice; dependencies (from earlier waves) restore from cache.
+dotnet-fast build --projects-file affected.proj --layer $L --shard $I --of $N .
+```
+
+The contract:
+
+- **Layer 0** has no in-closure dependencies; layer *k* depends only on layers `< k`. Within a layer
+  no project depends on another, so a layer shards freely.
+- The pipeline runs the layers as **sequential waves** (wave *k* after wave *k-1*), so each wave's
+  outputs are uploaded before the next wave restores them. A `build --layer L --shard I --of N` agent
+  builds + uploads its slice and restores its dependencies (built by earlier waves) from the cache —
+  the cross-agent handoff works because keys are content-addressed.
+- `--auto-shards` sizes each layer's shard count to its project count (capped by `--max-shards`); a
+  trivial layer collapses to one shard.
+- Mainly helps **cold caches and foundation changes** — a warm PR build is already restore-dominated.
+  If a wave runs before its dependency wave finishes, the agent safely rebuilds the missing dependency
+  locally (correct, just not shared).
 
 By default each shard is balanced by raw project *count* — fine when projects are similarly sized,
 but a lopsided shard (one huge project alongside many small ones) can bottleneck the whole wave on
-its slowest shard. Add `--record-timings` to a shard job so it saves its own per-project build
-durations to the cache, and `--use-cached-timings` on later runs so shard assignment is balanced by
-actual build time instead of count:
+its slowest shard. Pass `--timings <file>` (a local `{ "ProjectName": <ms> }` JSON file) or
+`--use-cached-timings` (the merged build-timings data written by `--record-timings`) and the
+LPT-style packer isolates slow projects instead of round-robining by count:
 
 ```bash
-dotnet-fast build --layer 0 --shard $SHARD --of $TOTAL --use-cached-timings --record-timings .
+# Matrix-generation job is unchanged (leg count is still purely count-based).
+dotnet-fast build --projects-file affected.proj --auto-shards --max-shards 8 --format matrix .
+
+# Each per-shard job balances its slice by prior build duration and records this run's durations
+# back to the cache for the next run to use.
+dotnet-fast build --projects-file affected.proj --layer $L --shard $I --of $N --use-cached-timings --record-timings .
 ```
 
-Every agent building a shard of the *same* run should pass the same timing flags, so they all slice
-consistently. With no timing data yet (first run, or a cold cache), this degrades to the same
-count-balanced behavior as today — the flags are purely additive.
+Every agent building a shard of the *same* run must pass the same timing flags (the same `--timings`
+file, or all `--use-cached-timings` with the same `--timings-scope`) — otherwise agents can disagree on
+the slice boundaries. With no timing data at all (first run, cold cache, or neither flag) sharding is
+the count-balanced round-robin — the flags are purely additive.
+
+> The per-slice build and cross-wave handoff are implemented and tested. The exact YAML for
+> sequencing a *dynamic* number of waves is still being validated against real Azure Pipelines, so
+> treat the wave orchestration as provisional. Two shapes work today: a fixed small number of wave
+> stages (for example five) with empty waves skipped — most affected graphs are shallow — or a single
+> orchestrator job that loops the layers itself.
+
+## Restored tree contract
 
 After a successful `dotnet-fast build`, every processed project has `bin/<configuration>` and
 `obj/<configuration>` materialized either from the verified cache artifact or from a real `dotnet build
