@@ -206,9 +206,9 @@ re-run; shards that all start at the same instant still each pay it once, since 
 given up yet when the others begin. The marker is only read after a real cache miss and only while
 it is recent, so a key that has since been uploaded is always restored normally.
 
-Install `dotnet-fast` once and cache it, so no agent pays a `dotnet tool restore`. There is no
-standalone binary to download (see [support-matrix.md](support-matrix.md#platform)), so the composite
-action installs from NuGet into a directory and caches that directory:
+Install `dotnet-fast` once and cache it, so no agent pays a `dotnet tool restore`. NuGet is the
+channel with a signature (see [security.md](security.md#the-standalone-binary)), so the composite
+action installs from there into a directory and caches that directory:
 
 ```yaml
 # .github/actions/dotnet-fast/action.yml

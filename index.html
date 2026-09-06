@@ -97,7 +97,7 @@
       <a href="#features">Features</a>
       <a href="#install">Install</a>
       <a href="#ci">CI</a>
-      <a href="https://github.com/RDalziel/dotnet-fast">Docs</a>
+      <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/README.md">Docs</a>
       <a href="https://www.nuget.org/packages/RDLL.dotnet-fast">NuGet</a>
     </nav>
   </div>
@@ -117,7 +117,7 @@
       load no MSBuild or Roslyn, so they start in milliseconds and run common jobs 10–100× faster.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Get started</a>
-      <a class="btn" href="https://github.com/RDalziel/dotnet-fast">Documentation</a>
+      <a class="btn" href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/README.md">Documentation</a>
       <a class="btn coffee" href="https://buymeacoffee.com/rdll">☕ Buy me a coffee</a>
     </div>
   </section>
@@ -155,7 +155,9 @@ dotnet-fast test-plan --shards 8 --format matrix .</pre>
       <div class="card"><h3><code>bom</code></h3><p>Software Bill of Materials without a build: direct + transitive packages, purls, hashes, and the dependency graph as CycloneDX (JSON/XML, 1.4–1.6) or SPDX (2.2/2.3) — from lock files or restored assets, with <code>--restore</code> for a fresh checkout.</p></div>
       <div class="card"><h3><code>dead-code</code></h3><p>Solution-wide dead-code detection: types and members nothing in production reaches, plus a distinct test-only category. Conservative — everything reported is safe to delete.</p></div>
       <div class="card"><h3><code>dead-dependencies</code></h3><p>Unused <code>PackageReference</code>/<code>ProjectReference</code> detection plus MSBuild smells (orphaned central versions, duplicates), with optional build-verified <code>--fix</code>.</p></div>
-      <div class="card"><h3><code>metrics</code></h3><p>Ten code-health budgets in one build-free pass: cyclomatic and cognitive complexity, Halstead difficulty, lines per file, dead and redundant code, <code>dynamic</code> usage — plus test coverage, CRAP and surviving mutants read from the Cobertura and Stryker reports your pipeline already produces. A metric you did not measure is never shown as passing.</p></div>
+      <div class="card"><h3><code>metrics</code></h3><p>Ten code-health budgets in one build-free pass: cyclomatic and cognitive complexity, Halstead difficulty, lines per file, dead and redundant code, <code>dynamic</code> usage — plus test coverage, CRAP and surviving mutants read from the coverage (Cobertura, OpenCover, LCOV, coverlet JSON) and Stryker reports your pipeline already produces. A metric you did not measure is never shown as passing. <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/metrics.md">Metrics guide</a>.</p></div>
+      <div class="card"><h3><code>insights</code></h3><p>Read-only analytics over the build, test and lint history <code>dotnet-fast</code> already records: slowest projects and fixtures, the lint finding-count trend, and a regression diff against a baseline branch — as text, JSON, or a self-contained HTML report you can open from a CI artifact.</p></div>
+      <div class="card"><h3><code>hooks</code> · <code>editorconfig</code> · <code>cache</code> · <code>update</code></h3><p>The small stuff: <code>hooks</code> installs Git hooks that run <code>lint --fix --staged</code> on commit (no husky, no JS toolchain); <code>editorconfig</code> explains, infers or seeds your config; <code>cache</code> grants the build cache's storage account the role CI needs; <code>update</code> picks the right <code>dotnet tool update</code> for how your copy was installed.</p></div>
     </div>
     <p class="muted" style="margin-top:14px">Native paths use no MSBuild or Roslyn — analysis is syntactic (no type information), which is the speed trade-off made explicit. The exceptions are documented and opt-in: <code>lint --deep</code> runs your project's real Roslyn analyzers for semantic rules, and <code>build</code> orchestrates the real <code>dotnet build</code> on a cache miss.</p>
   </section>
@@ -175,11 +177,12 @@ dotnet-fast test-plan --shards 8 --format matrix .</pre>
   <section id="ci">
     <h2>Made for CI</h2>
     <ul class="clean">
+      <li><strong>Gate the pull request</strong> — <code>lint .</code> exits <code>1</code> on any finding, scoped to the lines the PR actually changed so old debt in a touched file does not fail the build. Add <code>--sarif</code> and the findings land in GitHub code scanning. <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ci.md">Copy-paste CI wiring</a>.</li>
       <li><strong>Scope the build</strong> — <code>affected --ci</code> tells the pipeline exactly which projects changed; Azure batch builds can add <code>--ci-base last-successful-build</code>.</li>
       <li><strong>Skip the rebuild</strong> — <code>build</code> restores prior outputs from an Azure&nbsp;Blob cache on a clean checkout.</li>
       <li><strong>Parallelize tests</strong> — <code>test-plan</code> shards NUnit suites across agents (Azure&nbsp;DevOps <code>parallel</code>/<code>matrix</code>, GitHub Actions) without building first.</li>
     </ul>
-    <p class="muted">Guides: <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/build-cache.md">build cache</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/test-sharding.md">test sharding</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-code.md">dead code</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-dependencies.md">dead dependencies</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#metrics">metrics</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/bom.md">bill of materials</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ported-analyzers.md">ported analyzers</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/benchmarks.md">benchmark methodology</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/security.md">security &amp; supply chain</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/releasing.md">how releases are made</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md">full command reference</a>.</p>
+    <p class="muted">Guides: <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ci.md">CI wiring</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/build-cache.md">build cache</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/test-sharding.md">test sharding</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-code.md">dead code</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-dependencies.md">dead dependencies</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/metrics.md">metrics</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/bom.md">bill of materials</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ported-analyzers.md">ported analyzers</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/benchmarks.md">benchmark methodology</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/security.md">security &amp; supply chain</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/releasing.md">how releases are made</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md">full command reference</a>.</p>
   </section>
 
   <section id="support">
@@ -193,6 +196,8 @@ dotnet-fast test-plan --shards 8 --format matrix .</pre>
   <div class="wrap">
     <p><strong>dotnet-fast</strong> — <a href="https://www.nuget.org/packages/RDLL.dotnet-fast">NuGet</a> ·
       <a href="https://github.com/RDalziel/dotnet-fast">GitHub</a> ·
+      <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/README.md">Docs</a> ·
+      <a href="https://github.com/RDalziel/dotnet-fast/blob/main/RELEASES.md">Release notes</a> ·
       <a href="https://github.com/RDalziel/dotnet-fast/issues/new/choose">Open an issue</a> ·
       <a href="https://buymeacoffee.com/rdll">Buy me a coffee</a></p>
     <p>Free to use — see <a href="https://github.com/RDalziel/dotnet-fast/blob/main/LICENSE.txt">LICENSE</a>. Install: <code>dotnet tool install -g RDLL.dotnet-fast</code></p>

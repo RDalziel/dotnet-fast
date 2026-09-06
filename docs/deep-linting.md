@@ -107,10 +107,13 @@ it quietly falls back to the fast default with a one-line note — never an erro
 
 ## Native ports — popular analyzers without `--deep`
 
-A growing set of popular Roslyn analyzers is re-implemented **natively** (no Roslyn, no SDK), so you get
-those findings in the fast default path. Each is opt-in per repo via `.editorconfig` and verified at exact
-parity against the real analyzer. See **[ported-analyzers.md](ported-analyzers.md)** for the full list and
-how to enable each one.
+A large set of popular Roslyn analyzers is re-implemented **natively** (no Roslyn, no SDK), so you get
+those findings in the fast default path. They are **on by default**, at their upstream severity, and each
+is verified at exact parity against the real analyzer. Turn any of them off per repo from
+`.editorconfig` — `dotnet_diagnostic.<ID>.severity = none`, or a bulk
+`dotnet_analyzer_diagnostic.category-<Category>.severity` key. See
+**[ported-analyzers.md](ported-analyzers.md)** for the full list and the curated profile
+`dotnet-fast editorconfig recommend` prints.
 
 ---
 

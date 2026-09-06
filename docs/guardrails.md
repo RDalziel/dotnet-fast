@@ -188,7 +188,7 @@ a codebase against ten budgets in one pass and shares its complexity scorers wit
 
 ## Adopting them without a wall of findings
 
-Turning all four on across an existing codebase will produce a lot of output. Two approaches that
+Turning all six on across an existing codebase will produce a lot of output. Two approaches that
 work:
 
 **Scope them to where they earn their keep.** Test projects legitimately carry magic numbers and long

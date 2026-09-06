@@ -11,11 +11,13 @@ overstated supply-chain claim is worse than an honest gap.
 | Artifact | Integrity | Signature | Build provenance |
 |---|---|---|---|
 | NuGet package `RDLL.dotnet-fast` | Package content hash, enforced by the NuGet client | **nuget.org repository signature** (Microsoft, DigiCert chain, RFC-3161 timestamped) | None published |
+| `dotnet-fast-win-x64.exe` (GitHub release asset) | SHA-256 published beside it as `.sha256` | None | None published |
 
-**The NuGet package is the only artifact published.** There is no downloadable standalone binary today
-(see [below](#the-standalone-binary--not-published-today)). Everything in the "Signature" column comes
-from nuget.org, not from us: there is **no author signature** and **no build attestation**. The rest of
-this page is what that does and doesn't buy you.
+**The NuGet package is the artifact with a signature**, and everything in that column comes from
+nuget.org rather than from us: there is **no author signature** and **no build attestation**. Since
+`1.2.0` the standalone binary is also published, as a GitHub release asset with a checksum but no
+signature (see [below](#the-standalone-binary)). The rest of this page is what each of those does and
+doesn't buy you.
 
 ## The NuGet package
 
@@ -112,27 +114,36 @@ a merge, or a schedule.
 
 That constrains *who* can publish. It does not, on its own, attest to what was built.
 
-## The standalone binary — not published today
+## The standalone binary
 
-Each release builds a self-contained `dotnet-fast-win-x64.exe` and a matching SHA-256, but **neither is
-currently available for you to download.** NuGet is the only distribution channel today. Publishing the
-binary as a downloadable release asset is a 1.x item; when it happens, this section will describe how to
-verify it and a release note will say so.
+Since `1.2.0`, each release attaches a self-contained `dotnet-fast-win-x64.exe` and a matching
+`dotnet-fast-win-x64.exe.sha256` to its GitHub release on this repository. Both are built from the
+commit the version was tagged at. Check the download against the published digest before running it:
 
-If what you actually want is a CI agent that doesn't pay a `dotnet tool restore` per job, install once
-into a directory and cache that directory:
+```powershell
+(Get-FileHash .\dotnet-fast-win-x64.exe -Algorithm SHA256).Hash
+Get-Content .\dotnet-fast-win-x64.exe.sha256      # compare the two, case-insensitively
+```
+
+```bash
+sha256sum -c dotnet-fast-win-x64.exe.sha256       # if you have coreutils
+```
+
+**Be precise about what that proves.** A checksum published next to the file it describes detects
+*accidental* corruption — a truncated download, a bad proxy, a flaky mirror. It is **not** a
+signature: anyone able to replace the binary on the release could replace the checksum beside it. The
+binary carries **no Authenticode signature** and no build attestation, so Windows SmartScreen may warn
+on first run.
+
+**The NuGet package remains the recommended channel**, precisely because its signature is issued by a
+third party rather than by us. If what you want is a CI agent that doesn't pay a `dotnet tool restore`
+per job, install once into a directory and cache that directory — that path still goes through NuGet:
 
 ```bash
 dotnet tool install RDLL.dotnet-fast --tool-path ./.dotnet-fast
 ```
 
-That install path goes through NuGet, so the repository signature described above applies to it — which
-is the stronger check anyway. `--tool-path` is documented in [install.md](install.md).
-
-Worth stating even though it's moot today: a checksum published next to the file it describes only
-detects accidental corruption — a truncated download, a bad proxy, a flaky mirror. Anyone able to
-replace the binary could replace the checksum beside it. It is not protection against a compromised
-release channel. The NuGet path is stronger precisely because the signature is issued by a third party.
+`--tool-path` is documented in [install.md](install.md).
 
 Nothing we ship is Authenticode-signed, so Windows SmartScreen may warn on first run.
 

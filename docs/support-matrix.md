@@ -28,9 +28,9 @@ unsupported until a release note says otherwise.
 - **What actually ships.** The `RDLL.dotnet-fast` NuGet package is a *portable* .NET tool
   (`tools/net10.0/any/`), but the tool itself is a native binary that the managed entry point launches,
   and the package carries that binary for **`win-x64` only** (`tools/net10.0/any/runtimes/win-x64/native/`)
-  — the `--deep` Roslyn sidecar included. No other runtime identifier is published, and the NuGet
-  package is the only artifact you can download: there is no standalone binary release asset today
-  (see [security.md](security.md#the-standalone-binary--not-published-today)).
+  — the `--deep` Roslyn sidecar included. No other runtime identifier is published. Each release also
+  attaches a standalone `dotnet-fast-win-x64.exe` and its `.sha256`, checksummed but unsigned — NuGet
+  is still the recommended channel (see [security.md](security.md#the-standalone-binary)).
 - **Linux and macOS do not work today** — a stronger statement than "untested", and worth stating
   plainly because the install step gives no warning. `dotnet tool install -g RDLL.dotnet-fast`
   **succeeds** on Linux or macOS: NuGet sees a portable .NET tool and installs it. The first run then

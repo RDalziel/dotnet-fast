@@ -11,6 +11,19 @@ dotnet-fast <command> [target] [options]
 `target` is optional — with nothing given, the tool finds the nearest `.sln`/`.csproj` or scans the
 current directory.
 
+## Contents
+
+**Lint & format** — [`lint`](#lint) · [`format`](#format) · [`editorconfig`](#editorconfig)
+
+**Code health** — [`metrics`](#metrics) · [`dead-code`](#dead-code) ·
+[`dead-dependencies`](#dead-dependencies) · [`bom`](#bom) · [`doctor`](#doctor)
+
+**CI** — [`affected`](#affected) · [`build`](#build) · [`test-plan`](#test-plan) ·
+[`cache`](#cache) · [`insights`](#insights)
+
+**Everything else** — [`hooks`](#hooks) · [`update`](#update) ·
+[Version banner](#version-banner) · [Global options](#global-options) · [Exit codes](#exit-codes)
+
 ## Version banner
 
 Every command writes one identity line to **stderr** before it does anything else, so a CI log always
@@ -62,6 +75,10 @@ Useful options:
 | `--baseline <file>` | Compare against a saved baseline and fail only on *new* findings. |
 | `--json` / `--report <file>` | Emit results as JSON / write a JSON report. |
 | `--sarif <file>` | Also write SARIF 2.1.0 for GitHub code scanning — see [code-scanning.md](code-scanning.md). |
+| `--list-rules` | List the rule catalog and exit — grouped by category, with each rule's id, description and whether `--fix` can fix it. Narrow it with `--category <NAME>` or `--fixable`; add `--json` for tooling. |
+| `--explain <ID>` | Print the full description of one rule (e.g. `--explain DF9002`) and exit. |
+| `--only-active-analyzers` | Report only the analyzer diagnostics your `.editorconfig` has actually enabled, instead of the full bundled superset. |
+| `--record-findings` | Append this run's finding counts to the configured timings store, so [`insights`](#insights) can show the trend, the top rules and the fix-adoption rate. Off by default; records counts only, never your code. |
 
 Findings honor your `.editorconfig` — a rule set to `none` is suppressed, and `warning`/`error`
 promotions are reflected, just like a real build.
@@ -75,12 +92,11 @@ still rewrites whole files.
 
 ### Guardrails (opt-in): keeping AI-written code reviewable
 
-Six optional rules for repos where an agent writes the code and a human reviews it. An agent will
-happily ignore a style guide, but it cannot ignore a lint error in CI — so these are the constraints
-that actually shape what gets generated. Each message is written for the agent that has to fix it: it
-names the design move to make, not just the violation.
-
-All six are **off by default** and report-only. Nothing changes for your repo until you ask for it:
+Six optional rules for repos where an agent writes the code and a human reviews it: no explanatory
+comments, a line budget per method and per file, no magic numbers, and budgets on cyclomatic
+complexity and Halstead difficulty. An agent will happily ignore a style guide, but it cannot ignore a
+lint error in CI. All six are **off by default** and report-only — nothing changes for your repo until
+you switch one on:
 
 ```ini
 # .editorconfig
@@ -100,24 +116,23 @@ dotnet_fast_max_cyclomatic_complexity = 22
 dotnet_fast_max_halstead_difficulty = 80
 ```
 
-| Rule | Reports |
-|---|---|
-| `DF9001` | A `//` or `/* … */` comment. A comment usually marks where the code failed to say what it does; the fix that lasts is an intent-revealing name or an extracted method. XML documentation (`///`, `/** … */`) is exempt — that is where prose belongs. |
-| `DF9002` | A method, constructor, operator, local function or accessor over `dotnet_fast_max_lines_per_function` lines (default 50), blank lines excluded. Attribute lines don't count against the budget. |
-| `DF9003` | A file over `dotnet_fast_max_lines_per_file` non-blank lines (default 250) — the single-responsibility principle stated as a measurement. |
-| `DF9004` | A numeric literal with no name. `dotnet_fast_magic_number_allowed` (default `0,1,-1,2`) is matched by value, so `0x02`, `2L` and `2.0` all satisfy a configured `2`. Positions where the syntax already names the value — `const`/`readonly` fields, `enum` members, parameter defaults, array indexes — are exempt. |
-| `DF9005` | A member over `dotnet_fast_max_cyclomatic_complexity` (default 22) independent paths — one per `if`, loop, `catch`, ternary, short-circuit, `case`, switch arm, `when` guard and pattern `and`/`or`. That count is also the number of cases a test suite has to cover. |
-| `DF9006` | A member over `dotnet_fast_max_halstead_difficulty` (default 80). Difficulty rises with the variety of operations in one member and with how often the same values are re-read — the signature of code juggling several levels of abstraction at once. |
+| Rule | Reports | Threshold key |
+|---|---|---|
+| `DF9001` | a `//` or `/* … */` comment (`///` XML docs are exempt) | — |
+| `DF9002` | a member over 50 lines, blank lines excluded | `dotnet_fast_max_lines_per_function` |
+| `DF9003` | a file over 250 non-blank lines | `dotnet_fast_max_lines_per_file` |
+| `DF9004` | a numeric literal with no name | `dotnet_fast_magic_number_allowed` |
+| `DF9005` | a member over 22 independent paths | `dotnet_fast_max_cyclomatic_complexity` |
+| `DF9006` | a member over 80 Halstead difficulty | `dotnet_fast_max_halstead_difficulty` |
 
 Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one; a bulk `dotnet_analyzer_diagnostic`
-key does not, matching how Roslyn treats a disabled-by-default analyzer. Scope them where they fit —
-test projects legitimately carry magic numbers and long fixtures, so a `[**/*Tests/**.cs]` section
-setting `dotnet_diagnostic.DF9004.severity = none` is a normal thing to want. Suppress locally with
-`// dotnet-fast-disable-line DF9004` or `#pragma warning disable DF9004`.
+key does not, matching how Roslyn treats a disabled-by-default analyzer. Run
+`dotnet-fast lint --explain DF9002` for any rule's full description.
 
-Run `dotnet-fast lint --explain DF9002` for the full description of any of them, or see
-**[guardrails.md](guardrails.md)** for what each rule is for, how to adopt them on an existing
-codebase without a wall of findings, and why the messages are written the way they are.
+**[guardrails.md](guardrails.md)** is the full page: what each rule reports and why, how to scope them
+to the projects where they earn their keep (test projects legitimately carry magic numbers and long
+fixtures), how to adopt them on an existing codebase without a wall of findings, and why the messages
+are written for the agent that has to act on them.
 
 The guardrails stop new violations landing. To see where a codebase stands overall — including
 coverage, CRAP and surviving mutants — use **[`metrics`](#metrics)**, which shares its complexity
@@ -353,15 +368,18 @@ framework indirection (`--handler-pattern`), and CI patterns.
 
 ## `metrics`
 
-Score a codebase against code-health budgets in one pass. Ten numbers, one command, no build:
+Score a codebase against ten code-health budgets in one build-free pass. Seven come straight from your
+source; the other three are read from the coverage and mutation reports your pipeline already
+produces. **[metrics.md](metrics.md)** is the full guide — the ten metrics, where each report file
+lands, the CI gate and the baseline ratchet. This is the option reference.
 
 ```bash
 dotnet-fast metrics App.sln                          # the scoreboard (report-only, exits 0)
 dotnet-fast metrics App.sln --fail-on-budget         # exit 1 when a measured budget is exceeded
-dotnet-fast metrics App.sln --format json            # machine-readable
 dotnet-fast metrics App.sln --coverage TestResults   # adds coverage and CRAP
 dotnet-fast metrics App.sln --mutation StrykerOutput # adds surviving mutants
 dotnet-fast metrics App.sln --include-dead-code      # adds the dead-code count
+dotnet-fast metrics App.sln --format json            # machine-readable
 ```
 
 ```
@@ -378,43 +396,31 @@ Redundant code             4       0  4 duplicates over budget
 Dynamic typing             2       0  2 uses over budget
 ```
 
-Seven of the ten need nothing but your source, and are measured in the same pass:
-
-| Metric | Default budget | What it means |
-|---|---|---|
-| Cyclomatic complexity | ≤ 22 | Independent paths through a member — also the number of cases a test suite must cover. |
-| Cognitive complexity | ≤ 22 | How hard the member is to *follow*; nesting is weighted, so a deep `if` nest scores far above the same branches written flat. |
-| Halstead difficulty | ≤ 80 | Variety of distinct operations, and how often the same values are re-read. |
-| Lines per file | ≤ 500 | Non-blank lines. The single-responsibility principle as a measurement. |
-| Dead code | 0 | Reuses the `dead-code` analysis (opt in with `--include-dead-code` — it is the slow pass). |
-| Redundant code | 0 | Members with byte-identical bodies within one file. |
-| Dynamic typing | 0 | `dynamic` in a type position — C#'s nearest equivalent to TypeScript's `any`. |
-
-The remaining three cannot be derived from source, because they require running your tests. `metrics`
-**reads reports your pipeline already produces** — it never runs `dotnet test` itself:
-
-| Metric | Default budget | Supply it with |
-|---|---|---|
-| Test coverage | 100% | `--coverage <path>` — a Cobertura report (`coverage.cobertura.xml`), or a directory to search. |
-| CRAP | ≤ 25 | Falls out of `--coverage`: `complexity² × (1 − coverage)³ + complexity`. Complex *and* uncovered dominates the list. |
-| Surviving mutants | 0 | `--mutation <path>` — a Stryker.NET `mutation-report.json`, or a directory to search. Counts `Survived` and `NoCoverage`. |
-
-**A metric you did not measure never reads as passing.** Without `--coverage`, the coverage and CRAP
-rows say *not measured* and name the flag that would fill them, and `--fail-on-budget` ignores them.
-A green board that is green because nothing was checked would be worse than no board at all.
+**A metric you did not measure never reads as passing.** An unmeasured row says *not measured*, names
+the flag that would fill it, and is ignored by `--fail-on-budget`. A green board that is green because
+nothing was checked would be worse than no board at all.
 
 | Option | Effect |
 |---|---|
 | `--fail-on-budget` | Exit `1` when any **measured** metric is over budget. Report-only without it. |
-| `--coverage <path>` / `--mutation <path>` | Ingest a Cobertura / Stryker report. A file, or a directory to search recursively. |
+| `--coverage <path>` | Ingest a coverage report — a file, or a directory to search recursively. Repeatable: pass one per test project and the reports merge. Fills in coverage *and* CRAP. |
+| `--coverage-format <FORMAT>` | Which coverage format `--coverage` holds: `auto` (default), `cobertura`, `opencover`, `lcov`, `coverlet-json`. `auto` sniffs the report's own content rather than trusting its filename. |
+| `--mutation <path>` | Ingest a Stryker.NET `mutation-report.json`, or a directory to search. Repeatable. Counts `Survived` and `NoCoverage` as surviving. |
 | `--include-dead-code` | Also run the solution-wide dead-code pass. Off by default because it is markedly slower. |
-| `--top <N>` | How many worst offenders to list under each failing metric (default 5). |
-| `--format json` | `{ metrics: [...], worstMembers: [...], summary: {...} }`, with the full Halstead set per member. |
-| `--max-cyclomatic`, `--max-cognitive`, `--max-halstead-difficulty`, `--max-lines-per-file`, `--min-coverage`, `--max-crap` | Override a budget for this run. |
+| `--top <N>` | How many worst offenders to list under each failing metric, and how many go in the JSON `offenders` array (default 5). |
+| `--format <FORMAT>` | `text` (default), `json`, or `sarif`. `json` is `{ metrics, worstMembers, summary }` with the full Halstead set per member; `sarif` is SARIF 2.1.0 on stdout for [code scanning](code-scanning.md). |
+| `--max-cyclomatic`, `--max-cognitive`, `--max-halstead-difficulty`, `--max-lines-per-file`, `--min-coverage`, `--max-crap` | Override a scored budget for this run. |
+| `--max-surviving-mutants`, `--max-dead-code`, `--max-duplicate-bodies`, `--max-dynamic-uses` | Override a *count* budget for this run — surviving mutants, dead symbols, duplicate bodies, `dynamic` uses. Each defaults to `0`. |
+| `--write-baseline <file>` | Record where the codebase stands today, for the ratchet below. |
+| `--baseline <file>` | With `--fail-on-budget`, fail only on a row that got **worse** than the baseline. A row over budget but no worse reports `over budget (no worse than baseline)` and does not fail the build. |
 
-Every budget is a **maximum, exceeded strictly** — a member at exactly 22 is inside a budget of 22.
-The complexity scorers are shared with the `DF9005`/`DF9006` guardrails, so the CI gate and this
-scoreboard can never disagree about a member.
+Every budget is a **maximum, exceeded strictly** — a member at exactly 22 is inside a budget of 22 —
+and resolves command line > `dotnet-fast.json` > default. The complexity scorers are shared with the
+`DF9005`/`DF9006` guardrails, so the CI gate and this scoreboard can never disagree about a member.
+
+Files `metrics` could not read (a non-UTF-8 file, a permission error) and files whose C# does not
+parse are counted and reported rather than skipped silently — as a footer line, and as
+`summary.readFailures` / `summary.filesWithSyntaxErrors` in the JSON.
 
 ---
 
@@ -430,7 +436,7 @@ the reference instead of risking a false positive. Separate `DD####` id space.
 ```bash
 dotnet-fast dead-dependencies .                    # human report (report-only, exits 0)
 dotnet-fast dead-dependencies . --format json      # { findings: [...], summary: {...} }
-dotnet-fast dead-dependencies . --no-info          # only the unused tier (DD0001/DD0002/DD0007)
+dotnet-fast dead-dependencies . --no-info          # only the unused tier (DD0001/DD0002/DD0007/DD0009)
 dotnet-fast dead-dependencies . --fail-on-unused   # exit 1 when an unused dep is found (CI gate)
 dotnet-fast dead-dependencies . --fix              # DRY-RUN: preview the removal diff, write nothing
 dotnet-fast dead-dependencies . --fix --write      # apply the surgical csproj/props removals
@@ -440,7 +446,7 @@ dotnet-fast dead-dependencies . --verify           # opt-in: build each candidat
 | Option | Effect |
 |---|---|
 | `--fail-on-unused` | Exit `1` on an unused finding — without it the command is report-only and exits `0` (info findings never flip the exit). |
-| `--no-info` | Report only the unused tier (`DD0001`/`DD0002`/`DD0007`), hiding the info smells. |
+| `--no-info` | Report only the unused tier (`DD0001`/`DD0002`/`DD0007`/`DD0009`), hiding the info smells. |
 | `--keep <ID>` | Ad-hoc known-keep for a package id or trailing-`*` glob (repeatable) — never report it as unused. |
 | `--fix` / `--fix --write` | Remove the removable findings — dry-run diff by default, `--write` applies. `DD0005`/`DD0008` are report-only. |
 | `--verify` | Opt-in SDK lane: copy the workspace, apply the removals, `dotnet build` the affected projects, and mark each finding verified iff the build stayed green. With `--fix --write --verify`, only verified removals are written. |
@@ -452,26 +458,38 @@ gates, the fact tables, and the build-verify lane.
 
 ## `bom`
 
-Generate a Software Bill of Materials for a project or a solution as CycloneDX 1.6 JSON — every direct
-and transitive `PackageReference` plus every `ProjectReference`, with purls, content hashes (when the
-source tier carries them), and a full dependency graph. Build-free: pure text parsing of
-`packages.lock.json` / `obj/project.assets.json`, no MSBuild, no `dotnet restore` shelled out. A single
-`.csproj` reports that project alone; a directory, `.sln`, `.slnx`, or `.slnf` merges every discovered
-project's graph into one document, scoped by `.slnf` or `--project`.
+Generate a Software Bill of Materials for a project or a solution — every direct and transitive
+`PackageReference` plus every `ProjectReference`, with purls, content hashes (when the source tier
+carries them), and a full dependency graph, as **CycloneDX** or **SPDX**. Build-free by default: pure
+text parsing of `packages.lock.json` / `obj/project.assets.json`, no MSBuild and no `dotnet restore`
+shelled out unless you pass `--restore`. A single `.csproj` reports that project alone; a directory,
+`.sln`, `.slnx`, or `.slnf` merges every discovered project's graph into one document, scoped by
+`.slnf` or `--project`.
 
 ```bash
 dotnet-fast bom App/App.csproj                     # writes App/bom.json, prints a text summary
 dotnet-fast bom App/App.csproj --output sbom.json   # write to an explicit path
 dotnet-fast bom App/App.csproj --json               # machine summary (counts + output path) on stdout
 dotnet-fast bom .                                   # solution-level: merges every discovered project
+dotnet-fast bom . --format spdx                     # SPDX 2.3 JSON instead of CycloneDX 1.6
+dotnet-fast bom . --output-format xml               # CycloneDX XML
+dotnet-fast bom . --restore                         # restore first if a project has neither tier
 ```
 
 | Option | Effect |
 |---|---|
-| `--output <FILE>` | Where to write the BOM document. Defaults to `bom.json` next to the project/solution. |
+| `--output <FILE>` | Where to write the BOM document. Defaults to `bom.json` next to the project/solution (`bom.xml` with `--output-format xml`). |
 | `--json` | Print a machine-readable summary to stdout instead of the human one. The document itself always goes to `--output`. |
-| `--project <NAME>` | (Solution runs) limit to specific projects — same global flag `affected`/`dead-dependencies` use. |
-| `--format` / `--spec-version` | Reserved flags — only `cyclonedx`/`1.6` are accepted today, so a future format/version is purely additive. |
+| `--project <NAME>` | (Solution runs) limit to specific projects — the same global flag `affected`/`dead-dependencies` use. |
+| `--format <FORMAT>` | Document format: `cyclonedx` (default) or `spdx`. |
+| `--spec-version <VERSION>` | CycloneDX accepts `1.4`, `1.5`, `1.6` (default `1.6`); SPDX accepts `2.2`, `2.3` (default `2.3`). |
+| `--output-format <ENCODING>` | Encoding: `json` (default) or `xml`. XML is CycloneDX-only. |
+| `--restore` | Shell `dotnet restore` for any project with neither a lock file nor restored assets, then retry. Off by default — this is the one flag that gives up "build-free". A hung restore is killed after a bounded timeout. |
+| `--exclude-dev` | Omit dev-only components (`PrivateAssets="all"` — analyzers, source generators, build-time tooling) entirely. By default they are included and scoped as CycloneDX `scope: "excluded"` / SPDX `DEV_DEPENDENCY_OF`. |
+
+An unsupported combination — `spdx` with `--output-format xml`, or `cyclonedx` with
+`--spec-version 2.2` — fails with an error listing exactly what *is* supported, never a silent
+fallback to whichever serializer happens to be newest.
 
 A `.csproj` target requires a `packages.lock.json` next to it (`dotnet restore` with
 `<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>`); without one, `bom` fails clearly
@@ -479,7 +497,7 @@ rather than guessing the transitive graph. A solution run is more forgiving per 
 preferred, falls back to a restored `obj/project.assets.json`, else that project is skipped with a
 stated reason (never a silent partial document). `serialNumber` is derived from the document's own
 content, not the current time — re-running against an unchanged project or solution reproduces the same
-`serialNumber`. See [bom.md](bom.md) for the full component model, tier table, and CycloneDX shape.
+`serialNumber`. See [bom.md](bom.md) for the full component model, tier table, and document shapes.
 
 ---
 

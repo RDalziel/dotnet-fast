@@ -13,13 +13,17 @@ CLI-contract and deprecation rules that decide which segment moves — is in
 behind it.
 
 One version identifies everything in a release: the NuGet package version, the release tag (`vX.Y.Z` —
-the same number with a `v` prefix), and what `dotnet-fast --version` prints (`1.0.0`, bare) all refer
+the same number with a `v` prefix), and what `dotnet-fast --version` prints (`1.2.0`, bare) all refer
 to the same build. There is no separate build number, and a published version is never re-cut with
 different content.
 
-The stable line is **`1.0.0`**. The compatibility rules in [versioning.md](versioning.md) were already
-how we worked before it; from `1.0` they are a formal promise rather than a working practice, and a
-break in them costs a major version.
+The current stable line is the newest entry in [RELEASES.md](../RELEASES.md); this page does not
+restate it, because a hardcoded number here goes stale the moment a release ships. The compatibility
+rules in [versioning.md](versioning.md) were already how we worked before `1.0`; from `1.0` they are a
+formal promise rather than a working practice, and a break in them costs a major version.
+
+One version has no NuGet package: **`1.0.1` was tagged and never published**, and everything in it
+shipped in `1.1.0`. Pinning it in `.config/dotnet-tools.json` will fail to restore.
 
 A pre-release version carries a suffix (`1.0.0-rc.1`) and is published as a **pre-release** on both
 NuGet and GitHub, so `dotnet tool install` and the GitHub "latest release" link keep resolving the
@@ -28,18 +32,24 @@ stable line until the final version ships. Installing one is always explicit —
 
 ## What a release ships
 
-- **The NuGet package `RDLL.dotnet-fast`** — the supported way to install and update, and the only
-  channel a release is published to
+- **The NuGet package `RDLL.dotnet-fast`** — the supported way to install and update
   (`dotnet tool install -g RDLL.dotnet-fast` / `dotnet tool update -g RDLL.dotnet-fast`).
 - **A plain-English entry in [RELEASES.md](../RELEASES.md)** for anything user-visible, with anything
   action-required stated first.
 - **Updated documentation on this site** when the command surface or the lint rule catalog changed.
+- **A self-contained `dotnet-fast-win-x64.exe` and its `.sha256`**, built from the same commit and
+  attached to that version's GitHub release on this repository. Since `1.2.0` this is a published
+  artifact rather than an internal one.
+- **A tag on these docs.** Each release commits the documentation as it stood for that version and
+  tags it `vX.Y.Z`, so you can read what a page said at the version you are running rather than only
+  its current state.
 
-A self-contained `dotnet-fast-win-x64.exe` is built from the same commit and checksummed, but **it is
-not currently published anywhere you can download it** — NuGet is the only distribution channel today.
-Publishing it as a downloadable release asset is a 1.x item. Until then, if you want a tool-restore-free
-binary on a CI agent, install once with `dotnet tool install RDLL.dotnet-fast --tool-path <dir>` and
-cache `<dir>`; see the [README](../README.md).
+The checksum next to the binary detects a corrupted or truncated download; it is not a signature, and
+anyone able to replace the file could replace the checksum beside it. **NuGet remains the recommended
+channel** — it is the one with a third-party signature ([security.md](security.md)). If what you want
+is a CI agent that does not pay a tool restore per job, installing once with
+`dotnet tool install RDLL.dotnet-fast --tool-path <dir>` and caching `<dir>` keeps that signature in
+the picture.
 
 ### Integrity
 

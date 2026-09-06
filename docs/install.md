@@ -312,6 +312,10 @@ dotnet dotnet-fast update               # do it
 dotnet-fast 1.0.0 is the latest published version.
 ```
 
+*(As with every transcript on this page, that line is what the `1.0.0` pass actually printed — it is
+not a statement about which version is newest now. `--check` names whatever nuget.org holds when you
+run it; [RELEASES.md](../RELEASES.md) is the current list.)*
+
 `--dry-run` from a manifest install prints the command it would run, and says up front what it would
 touch:
 
