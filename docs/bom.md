@@ -13,6 +13,8 @@ stated reason** — never silently half-reported — and `--restore` is the one 
 (purls, hashes where the source tier carries them, the dependency graph); it is **not a
 vulnerability scan** — feed it to your SCA tooling for that.
 
+The flag reference is in [commands.md](commands.md#bom). This page is how to use it.
+
 One neutral component model feeds a pluggable set of serializers, so the same document can come out
 in any of these (format, spec version, encoding) combinations:
 
@@ -52,7 +54,10 @@ bom: 1 project(s) skipped (no lock file or restore output):
 
 ## Single project vs. solution
 
-- **A `.csproj` target** reports that project alone, and requires a `packages.lock.json` next to it.
+- **A project-file target** (`.csproj`, `.fsproj` or `.vbproj`) reports that project alone, and
+  requires a `packages.lock.json` next to it. Everything `bom` reads — the lock file,
+  `project.assets.json`, `PackageReference` items — is language-neutral, so a mixed C#/F# solution
+  produces one document covering both.
 - **A directory, `.sln`, `.slnx`, or `.slnf` target** resolves the whole project set (`.slnf` scopes to
   its own filtered set; `--project` narrows further) and merges every project's graph into one document.
 
@@ -147,12 +152,18 @@ built output) is scoped as a dev dependency instead of an ordinary runtime one:
 | CycloneDX `scope` | `required` | `excluded` — the spec's own wording: "components... not reachable within a call graph at runtime" |
 | SPDX relationship | `DEPENDS_ON` | `DEV_DEPENDENCY_OF` (SPDX 2.2 Annex I Table 68 — supported unchanged on 2.3 too) |
 
-Detection reads the project's own `.csproj` directly: neither `packages.lock.json` nor
-`project.assets.json`'s resolved-graph section carries `PrivateAssets`, so the `.csproj`'s
+Detection reads the project file directly: neither `packages.lock.json` nor
+`project.assets.json`'s resolved-graph section carries `PrivateAssets`, so the project's own
 `PackageReference` items are the one place this fact is always declared. On a solution run, a package
 shared by more than one project is only scoped dev when **every** contributing project declares it
 `PrivateAssets="all"` — a package that's a real runtime dependency in even one project is not honestly
 "excluded" at solution scope.
+
+A package the project never declares at all is **never** a dev dependency. That matters for F#:
+`FSharp.Core` is added implicitly by the F# SDK (unless `DisableImplicitFSharpCoreReference` is set),
+so it is in the lock file but nowhere in the `.fsproj`. It is a real runtime dependency, so it appears
+in the document scoped `required` and survives `--exclude-dev`. Declare it explicitly with
+`PrivateAssets="all"` and it is scoped dev like any other package — the project's stated intent wins.
 
 Dev dependencies are **included** by default (scoped as above); pass `--exclude-dev` to omit them from
 the document entirely:
@@ -200,9 +211,7 @@ in real, cited ways, not just the version string:
 - **SPDX `2.2` vs. `2.3`**: `primaryPackagePurpose` (`APPLICATION`/`LIBRARY`) is a field SPDX 2.3 added
   to its Package Information clause that 2.2 doesn't define; a `2.2` document never carries it.
 
-Requesting a combination outside the matrix above — `spdx` with `--output-format xml`, or `cyclonedx`
-with `--spec-version 2.2` — is a clear error listing exactly what IS supported for the part of the
-request that didn't match.
+An unsupported combination outside the matrix above errors the same way described up top.
 
 ## `--json`: machine-readable summary
 

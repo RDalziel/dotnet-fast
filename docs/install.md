@@ -370,8 +370,10 @@ clears that cache — it is shared with every other package on the machine, so o
 you want.
 
 `dotnet-fast` also writes an incremental formatting cache, `.dotnet-format-fast-cache.json`, next to
-the project it formatted. Deleting it is safe (the next run just re-does the work), and `--no-cache`
-stops it being used at all.
+the project it formatted — and, when you use [`--fantomas`](commands.md#f-formatting-with-fantomas),
+a second one, `.dotnet-fast-fantomas-cache.json`, recording which F# files Fantomas has already
+formatted. Both are safe to delete (the next run just re-does the work), both belong in
+`.gitignore`, and `--no-cache` stops either being used at all.
 
 ## Troubleshooting
 

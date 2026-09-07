@@ -48,26 +48,46 @@ the build. Copy-paste Actions and Azure Pipelines wiring:
 
 ## Commands
 
+**Lint & format**
+
 | Command | What it's for |
 |---|---|
-| [`lint`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#lint) | Report formatting + lint findings (the fast CI gate). `--fix` applies the safe fixes; `--deep` adds your real Roslyn analyzers. |
-| [`metrics`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#metrics) | Score a codebase against ten budgets: complexity, coverage, CRAP, surviving mutants, dead code. |
-| [`affected`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#affected) | List the projects a Git change set affects, plus their reverse-dependents, for scoped CI. |
-| [`build`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#build) | Remote build cache (preview): restore prior build outputs instead of rebuilding on a clean checkout. |
-| [`test-plan`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#test-plan) | NUnit test sharding for CI agents, planned from source before any test assembly is built. |
-| [`dead-code`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#dead-code) | Types and members nothing in production reaches, plus a distinct test-only category. |
-| [`dead-dependencies`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#dead-dependencies) | Unused `PackageReference`s and `ProjectReference`s, with an optional build-verified fix. |
-| [`bom`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#bom) | Software Bill of Materials — CycloneDX or SPDX — without a build. |
+| [`lint`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#lint) | Report formatting + lint findings (the fast CI gate). `--fix` applies the safe fixes; `--deep` adds your real Roslyn analyzers. Guides: [rules](https://github.com/RDalziel/dotnet-fast/blob/main/docs/rules.md) · [ported analyzers](https://github.com/RDalziel/dotnet-fast/blob/main/docs/ported-analyzers.md) · [deep linting](https://github.com/RDalziel/dotnet-fast/blob/main/docs/deep-linting.md) · [guardrails](https://github.com/RDalziel/dotnet-fast/blob/main/docs/guardrails.md). |
+
+**Code health**
+
+| Command | What it's for |
+|---|---|
+| [`metrics`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#metrics) | Score a codebase against fourteen budgets: complexity, coverage, CRAP, surviving mutants, dead code. Guide: [metrics.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/metrics.md). |
+| [`dead-code`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#dead-code) | Types and members nothing in production reaches, plus a distinct test-only category. Guide: [dead-code.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-code.md). |
+| [`dead-dependencies`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#dead-dependencies) | Unused `PackageReference`s and `ProjectReference`s, with an optional build-verified fix. Guide: [dead-dependencies.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-dependencies.md). |
+| [`bom`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#bom) | Software Bill of Materials — CycloneDX or SPDX — without a build. Guide: [bom.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/bom.md). |
 | [`doctor`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#doctor) | Build-free scan for common workspace problems: duplicate references, CPM conflicts, lock-file drift. |
-| [`insights`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#insights) | Analytics over recorded build/test/lint history: hotspots, trends, regressions, HTML report. |
-| [`hooks`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#hooks) | Install Git hooks that run `lint --fix --staged` on commit — no husky or lint-staged needed. |
-| [`editorconfig`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#editorconfig) | Explain which `.editorconfig` settings apply to a file, infer one from your code, or seed a profile. |
-| [`cache`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#cache) | Grant the build cache's storage account the data-plane role CI needs, without a separate az step. |
-| [`update`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#update) | Update the tool using the `dotnet tool update` form that matches how your copy was installed. |
+| [`insights`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#insights) | Analytics over recorded build/test/lint history: hotspots, trends, regressions, HTML report. Guide: [insights.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/insights.md). |
+
+**CI accelerators**
+
+| Command | What it's for |
+|---|---|
+| [`affected`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#affected) | List the projects a Git change set affects, plus their reverse-dependents, for scoped CI. Guide: [ci.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/ci.md). |
+| [`build`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#build) | Remote build cache (preview): restore prior build outputs instead of rebuilding on a clean checkout. Guide: [build-cache.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/build-cache.md). |
+| [`test-plan`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#test-plan) | NUnit test sharding for CI agents, planned from source before any test assembly is built. Guide: [test-sharding.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/test-sharding.md). |
+
+**Also:** [`hooks`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#hooks) installs
+Git hooks that run `lint --fix --staged` on commit (no husky, no JS toolchain);
+[`editorconfig`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#editorconfig)
+explains, infers or seeds your `.editorconfig`
+([guide](https://github.com/RDalziel/dotnet-fast/blob/main/docs/editorconfig.md));
+[`cache`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#cache) grants the build
+cache's storage account the data-plane role CI needs, without a separate `az` step;
+[`update`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#update) picks the right
+`dotnet tool update` form for how your copy was installed.
 
 `format`, `style`, `whitespace` and `analyzers` are accepted as `dotnet format`-compatible aliases.
-Add `--json` to any command for machine-readable results and timing; `lint`, `doctor`, `metrics` and
-`dead-dependencies` also emit SARIF for GitHub code scanning. `lint` ships 153 native CST rules (`DF0001`–`DF0153`), each listed with its `--fix` status on the
+Add `--json` to any command for machine-readable results and timing; `lint`, `affected`, `doctor`,
+`metrics` and `dead-dependencies` also emit SARIF for GitHub code scanning
+([code-scanning.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/code-scanning.md)). `lint`
+ships 153 native CST rules (`DF0001`–`DF0153`), each listed with its `--fix` status on the
 [rules page](https://github.com/RDalziel/dotnet-fast/blob/main/docs/rules.md), and a large set of popular Roslyn analyzers
 is re-implemented natively and runs on the fast path **by default** — no `--deep` needed.
 

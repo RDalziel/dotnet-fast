@@ -125,6 +125,40 @@ load-bearing — a real build break. A false negative just means a missed cleanu
 toward the second, cheaper mistake. The summary makes the conservatism visible: `unknownKept` counts
 references kept because the evidence was incomplete, and `projectsSkipped` counts ineligible projects.
 
+## F# projects
+
+`.fsproj` projects are analyzed too — `.fs` and `.fsi` sources are parsed and their `open`
+directives, `open type`, module abbreviations (`module A = Ns.Path`), qualified names, identifiers
+and string literals feed the same evidence rules `using` directives feed for C#. Signature files
+count: an `open` that appears only in a `.fsi` is still proof its package is needed.
+
+`open` is not `using`, and every difference is handled by keeping more, never less:
+
+- **`open` is scoped and shadows.** An `open` inside a module applies to the end of that module, and
+  a later one silently shadows an earlier one. Neither is modelled — every `open` in the file counts
+  as evidence, wherever it sits. Being cleverer here could only ever *condemn* more references.
+- **`FSharp.Core` is never reported.** It's an implicit `PackageReference` the F# SDK adds to every
+  project, and its functions are used as bare identifiers (`map`, `ignore`, every operator) that name
+  nothing — there is no evidence to find, and removing it doesn't compile.
+- **`[<AutoOpen>]` packages are kept.** An auto-opened module is in scope without any `open` naming
+  it, so its functions are callable as bare identifiers. If a package's assemblies show it may
+  declare auto-opened modules, an F# project never condemns it. (A C# project can't consume an F#
+  auto-open, so C# verdicts are unaffected.)
+- **A file the F# parser can't read taints its project** rather than reading as "uses nothing" — F#'s
+  offside rule is hard to parse and a small fraction of real files fail. `--format json` names every
+  such file in an additive `unparsedSources` array, and the text report says how many there were.
+
+## Assembly-metadata evidence (`--nuget-cache`)
+
+When a project has been restored, the tool reads its `obj/project.assets.json` plus the referenced
+packages' own DLLs from the global NuGet package cache to build a package's complete public-surface
+inventory — the "real assembly metadata" the guarantee above and `DD0008` refer to. That cache root
+is normally found automatically (`NUGET_PACKAGES`, falling back to `~/.nuget/packages`); pass
+`--nuget-cache <DIR>` to point at a different one — a CI agent with a non-default restore cache
+location, or a second cache you want to verify against. Without a resolvable cache (or without a
+restore having happened at all), a package simply falls back to the curated fact table and namespace
+evidence above, never to a guess.
+
 ## Removing dead dependencies (`--fix`)
 
 `--fix` is **dry-run by default** — it prints a unified diff of the exact csproj/props removals and

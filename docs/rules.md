@@ -221,6 +221,93 @@ side-effect-free, since they drop its evaluation — otherwise report-only.
 indentation before, whitespace/newline after); if it shares its line with other code or a comment it
 stays report-only, to avoid leaving a fragment.
 
+## F# formatting hygiene (`FSH0001`–`FSH0004`)
+
+A small, separate catalog for F# source. It is deliberately narrow, and the reason is worth stating
+plainly: **F# is an offside-rule language — leading whitespace is syntax.** Change a line's
+indentation and you change which block it belongs to, which changes what the program does. Reprinting
+F# correctly therefore needs a real parse, and the community already has that in
+[**Fantomas**](https://fsprojects.github.io/fantomas/), an AST-based reprinter built on a fork of the
+F# compiler. `dotnet-fast` is not competing with it.
+
+What is left is the set of changes that **cannot alter a parse at all**, and that is exactly this
+catalog:
+
+| ID | Rule | `--fix` |
+|---|---|---|
+| `FSH0001` | Trailing whitespace at end of line. | **autofix** (removes it) |
+| `FSH0002` | File does not end with a newline. | **autofix** (appends the configured `end_of_line`) |
+| `FSH0003` | Line ending does not match the resolved `end_of_line`. | **autofix** (normalises it) |
+| `FSH0004` | Tab character in leading whitespace. | report-only — see below |
+
+**Explicitly out of scope: indentation, line wrapping, spacing, and anything structural.** Those
+belong to Fantomas, and a later release will orchestrate Fantomas itself rather than reimplement it.
+
+### Why `FSH0004` is reported but never fixed
+
+The other three edit whitespace the lexer never sees. A tab in leading whitespace is different twice
+over.
+
+It is not a style opinion. The F# compiler **rejects** it: error **FS1161, "TABs are not allowed in
+F# code"**. Microsoft's own F# formatting guidance states it directly — *"When indentation is
+required, you must use spaces, not tabs. F# code doesn't use tabs, and the compiler will give an
+error if a tab character is encountered outside a string literal or comment."* So this rule reports a
+file that will not build, not a file that offends someone's taste.
+
+And it cannot be fixed by machine. Converting a tab to spaces requires knowing the indent width the
+author meant. Under the offside rule a wrong width silently moves the line into a different block —
+a different `match` arm, a different `let` body — and the file still compiles, doing something else.
+No tool can recover that intent from the bytes, so this one reports and stops. Fix it in your editor,
+where you can see the block structure you meant.
+
+### How files are reached
+
+- **`.fs` and `.fsi`** are `<Compile>` items of an `.fsproj`. The F# SDK sets
+  `EnableDefaultCompileItems=false`, so a project lists every file explicitly and `dotnet-fast`
+  evaluates that list — no implicit `**/*.fs` glob, and compile order is preserved.
+- **`.fsx` scripts are not compile items of anything**, so no amount of project evaluation finds
+  one. They are picked up by walking each F# project's directory, pruning `bin`/`obj` and the usual
+  VCS/IDE folders. The consequence: a script that lives outside every `.fsproj` directory is not
+  reached, and a repository with no `.fsproj` at all has no F# files as far as this command is
+  concerned.
+
+### Which commands run them
+
+`dotnet-fast lint`, bare `dotnet-fast`, and `lint --fix`. The `dotnet format`-compatible verbs —
+`format`, `whitespace`, `style`, `analyzers`, and the `dotnet-format-fast` binary — are unchanged and
+never touch F#: real `dotnet format` is Roslyn-based and never processed `.fs`, so moving those would
+be a compatibility regression rather than a feature. A C#-only repository is unaffected in every
+mode.
+
+### No parser, on purpose
+
+These are checks on bytes; the F# grammar is never consulted. That is what keeps them working on the
+roughly 5% of real-world F# files a tree-sitter grammar cannot parse — precisely where you most need
+something to still work. The one piece of lexical state that *is* tracked exists only to **suppress**
+findings, never to create them: a line whose trailing whitespace sits inside a `"""…"""` or `@"…"`
+literal is skipped (there the spaces are string data, and trimming them would change a value), and a
+line beginning inside a string literal or a `(* … *)` block comment is skipped by `FSH0004` (the
+compiler permits tabs there). Being wrong about that costs a missed finding, never a wrong rewrite.
+
+### `.editorconfig`
+
+The same keys and the same severity vocabulary as every other rule — see
+[editorconfig.md](editorconfig.md#f-hygiene-fsh0001fsh0004).
+
+```ini
+[*.{fs,fsi,fsx}]
+end_of_line = lf                             # FSH0003 measures against this
+insert_final_newline = true                  # FSH0002; true is the default
+trim_trailing_whitespace = true              # FSH0001; true is the default
+dotnet_diagnostic.FSH0004.severity = error   # per-rule severity, as usual
+```
+
+`dotnet_diagnostic.FSH0001.severity = none` removes the finding from the report **and** withholds the
+rewrite, exactly as it does for a `DFxxxx` rule.
+
+These four ids are not part of the `DFxxxx` count `lint --list-rules` prints — that number describes
+what a C# run reports — but `lint --explain FSH0004` works and prints the full description above.
+
 ---
 
 ☕ Find `dotnet-fast` useful? [**Buy me a coffee**](https://buymeacoffee.com/rdll) — thanks for the support!

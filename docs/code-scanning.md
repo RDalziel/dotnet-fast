@@ -1,9 +1,10 @@
 # GitHub code scanning (SARIF)
 
-Four commands can write [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) instead of — or
-alongside — their normal output: `lint`, `format`, `affected`, and `doctor`. Upload the result with
-`github/codeql-action/upload-sarif` and it shows up in your repository's **Security → Code
-scanning** tab, same as any other scanner.
+Five commands can write [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) instead of — or
+alongside — their normal output: `lint`, `affected`, `doctor`, `metrics`, and `dead-dependencies`
+(and `lint`'s hidden `dotnet format`-compatible alias `format` inherits the same `--sarif` flag).
+Upload the result with `github/codeql-action/upload-sarif` and it shows up in your repository's
+**Security → Code scanning** tab, same as any other scanner.
 
 > **The workflow below runs on `windows-latest`.** Windows x64 is the only platform `dotnet-fast` runs
 > on today — it installs on a Linux runner and then fails on first run. See
@@ -12,16 +13,20 @@ scanning** tab, same as any other scanner.
 ## Which commands, and what each SARIF means
 
 ```bash
-dotnet-fast lint App.sln --sarif lint.sarif           # findings: whitespace/style/lint/deep
-dotnet-fast format App.sln --sarif format.sarif        # findings: same set, from the format path
-dotnet-fast doctor App.sln --sarif doctor.sarif        # findings: workspace-health smells
-dotnet-fast affected --ci --format sarif --output-name affected .   # impact, not findings
+dotnet-fast lint App.sln --sarif lint.sarif                          # findings: whitespace/style/lint/deep
+dotnet-fast doctor App.sln --sarif doctor.sarif                      # findings: workspace-health smells
+dotnet-fast metrics App.sln --format sarif > metrics.sarif           # findings: over-budget members/files
+dotnet-fast dead-dependencies App.sln --format sarif > deps.sarif    # findings: unused references
+dotnet-fast affected --ci --format sarif --output-name affected .    # impact, not findings
 ```
 
-**`lint`/`format`/`doctor`** emit finding-level SARIF — one result per diagnostic, with a location
-(file/line/column), a rule id, and a severity. `lint --deep` findings merge into the same report:
-every result carries `properties.engine` (`native-format`, `native-cst`, or `roslyn-deep`) so you
-can tell which engine caught what, without losing the unified view.
+**`lint`/`doctor`/`metrics`/`dead-dependencies`** emit finding-level SARIF — one result per
+diagnostic, with a location (file/line/column, or the project for `dead-dependencies`), a rule id,
+and a severity. `lint --deep` findings merge into the same report: every result carries
+`properties.engine` (`native-format`, `native-cst`, or `roslyn-deep`) so you can tell which engine
+caught what, without losing the unified view. `lint` and `doctor` write to the path passed to
+`--sarif`; `metrics` and `dead-dependencies` write SARIF to stdout via `--format sarif`, so redirect
+it.
 
 **`affected --format sarif`** is different: it's an *impact* report, one result per affected
 project under a single `AFFECTED` rule, not a set of code-quality findings. It answers "what did
@@ -30,8 +35,8 @@ alongside the finding-level reports, showing which projects a PR's findings actu
 
 ## They share one driver — one tool entry in the Security tab
 
-All four reports use the same SARIF driver name (`dotnet-fast`), so uploading several from one job
-doesn't create four separate tool entries in GitHub's UI — they merge into one. Native `DF*` rules
+All five reports use the same SARIF driver name (`dotnet-fast`), so uploading several from one job
+doesn't create five separate tool entries in GitHub's UI — they merge into one. Native `DF*` rules
 and every ported analyzer rule carry full driver metadata (`shortDescription`, `fullDescription`,
 `helpUri` pointing at the rule's own docs page), so the alert detail in GitHub shows the same
 explanation you'd get from `dotnet-fast lint --explain <id>`.

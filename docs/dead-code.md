@@ -75,6 +75,44 @@ The asymmetry is deliberate: a false positive here means someone deletes code th
 used — a real correctness bug. A false negative just means a missed cleanup opportunity. Every rule
 above leans toward the second, cheaper mistake.
 
+## F# projects
+
+`.fsproj` sources are read, but F# gets **one** kind of finding and no autofix — and that is a
+deliberate limit, not a gap waiting to be filled.
+
+**What is reported:** a `let private` binding, or a `member private`, whose name occurs nowhere else
+in its own file. In F# `private` means "only from the enclosing type or module", a module can't be
+reopened in a second file, and there is no `partial`, so the file is the whole scope — if the name is
+written once, nothing calls it.
+
+**What is not reported, and why:**
+
+- **Dead types.** An F# record is constructed as `{ X = 1; Y = 2 }` and a union matched as `| Red` —
+  neither expression names the type, and inference means a type can be used everywhere and named
+  nowhere. Reporting one would mean telling you to delete working code.
+- **Test-only code and dead projects.** Both are type-reachability verdicts, so the refusal above
+  makes them unanswerable too.
+- **Anything `internal` or unmodified.** `internal` is assembly-wide, not file-wide — and F#'s
+  default accessibility is *public*, the opposite of C#'s member default, so silence is not
+  permission.
+- **`--fix` never touches an F# finding.** They are report-only; a syntactic argument isn't enough to
+  delete code on.
+
+Excluded on top of that, always in the keeping direction: attributed bindings and members of
+attributed types, operators `(+!)` and active patterns `(|Even|Odd|)`, any project with a reflective
+call whose argument is computed, any name that appears in a string literal anywhere in the project,
+and any file containing `#if`. A sibling `.fsi` signature file is read as *uses*, so mentioning a
+binding there keeps it alive.
+
+Two side effects worth knowing:
+
+- **A C# type used only from F# is no longer reported dead.** Identifiers written in F# source root
+  same-named C# symbols. A solution with no F# in it behaves exactly as before.
+- **Files the F# parser can't read are named, not dropped** — `--format json` lists them in an
+  additive `unparsedFiles` array, and the text report says how many there were. Unlike the C# rule
+  above, an unreadable F# file does not silence its siblings: a `private` binding's entire scope is
+  its own file, so a file that couldn't be read could not have referenced it.
+
 ## Test-only code
 
 Code that exists solely to support tests (helpers, fixtures, fakes) is real and intentional — but
@@ -254,6 +292,21 @@ The same protection applies to a **folder** target that isn't the whole solution
 discover, the folder is narrower than that solution's own graph, so it gets the same
 `--include-public` downgrade and warning. A folder that directly contains its own matching solution
 file (or an ordinary directory scan with no solution file anywhere above it) is unaffected.
+
+## Attribute-rooting policy (`--attribute-policy`)
+
+Any symbol carrying an attribute the tool does not specifically recognize (the framework patterns
+above are always understood, regardless of this setting) is, by default, kept alive rather than
+reported dead — an unrecognized attribute is treated as a possible serialization/DI/reflection
+marker the analysis can't see the use site of. That default is `--attribute-policy conservative`,
+and it is what makes a first run safe: fewer findings, essentially no false positives from
+attribute-driven wiring the tool doesn't model.
+
+`--attribute-policy relaxed` turns that off: only attributes the tool specifically knows about keep
+a symbol alive, and an unrecognized attribute no longer does. It surfaces more dead code, at a
+slightly higher risk of a false positive on a project that leans on an attribute-driven framework
+`dead-code` doesn't have built-in awareness of — use it once the conservative pass is clean and you
+want to push further, not as the default for an unfamiliar codebase.
 
 ## CI patterns
 

@@ -123,6 +123,36 @@ dotnet_fast_max_halstead_difficulty = 80
 threshold stands. A typo that silently removed a limit would turn a green build into a false green,
 which is the one failure mode a guardrail must never have.
 
+## F# hygiene (`FSH0001`–`FSH0004`)
+
+The [F# formatting-hygiene rules](rules.md#f-formatting-hygiene-fsh0001fsh0004) introduce **no new
+keys**. They read the core formatting keys you already have, plus the ordinary per-rule severity key:
+
+| Key | Drives |
+|---|---|
+| `end_of_line` | `FSH0003` — the ending every line is measured against, and the one `--fix` writes. |
+| `insert_final_newline` | `FSH0002` — set `false` and the rule reports nothing. |
+| `trim_trailing_whitespace` | `FSH0001` — set `false` and the rule reports nothing. |
+| `dotnet_diagnostic.FSH000x.severity` | Any of the four, with the full vocabulary above. `none` removes the finding **and** withholds the fix. |
+
+```ini
+[*.{fs,fsi,fsx}]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+dotnet_diagnostic.FSH0004.severity = error
+```
+
+Two behaviours worth knowing:
+
+- **An unset `end_of_line` follows the file's own endings**, exactly as it does for C# — a
+  consistently CRLF file under a silent `.editorconfig` reports nothing, and only a file that mixes
+  endings is flagged. This mirrors `dotnet format`, which preserves existing line endings when the
+  key is absent rather than forcing the LF default.
+- **`charset` is not enforced on F#.** A leading UTF-8 BOM is preserved verbatim and never counted as
+  leading whitespace, but the `utf-8` / `utf-8-bom` BOM *fixer* is part of the C# whitespace pass,
+  which does not run on `.fs`. If you need BOM policy applied to F#, that is not shipped yet.
+
 ## Two budget systems, two different numbers
 
 `dotnet-fast` has **two independent places that call something a "line budget"**, and they do not

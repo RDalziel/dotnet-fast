@@ -4,7 +4,11 @@
 first. It discovers fixtures from source, balances them across shards, and emits a GitHub Actions
 matrix, an Azure DevOps matrix, JSON, or runnable `dotnet test` commands.
 
-v1 is NUnit-only. xUnit and MSTest support are planned follow-ups.
+v1 is NUnit-only. xUnit and MSTest support are planned follow-ups. Both **C#** and **F#** test
+projects are discovered; a test project in any other language is reported rather than skipped (see
+[Nothing vanishes from a plan](#nothing-vanishes-from-a-plan)).
+
+The full flag reference is in [commands.md](commands.md#test-plan). This page is how to use it.
 
 > **Every pipeline on this page runs on a Windows agent.** Windows x64 is the only platform
 > `dotnet-fast` runs on today — it installs on Linux and macOS agents and then fails on first run.
@@ -406,6 +410,59 @@ the table endpoint is derived from the cache URL's host.)
 
 Use `--verify` when rolling the plan out to a new repository. It runs the baseline tests and shard
 filters, then checks that the shard union matches the baseline list.
+
+## F# test projects
+
+F# NUnit projects shard alongside C# ones. The shapes NUnit discovers are all recognised:
+
+| F# source | Fixture in the plan |
+|---|---|
+| `[<TestFixture>] type Name()` with `[<Test>]` / `[<TestCase(…)>]` members | the type |
+| a type with `[<Test>]` members and **no** `[<TestFixture>]` | the type |
+| module-level `[<Test>] let ``name with spaces`` () = …` | the **module** — it compiles to a static class, so there is no attribute to key on |
+| `module Inner = …` nested in another module | the nested module |
+| ``` type ``Array - unfold``() ``` | the backtick-quoted name, spaces and all |
+
+Fixture names use the runtime form, the same as C#: namespaces join with `.`, and anything declared
+inside a module or a class joins with `+`. **A module is a class**, so a type declared in
+`module CalculatorTests` is `CalculatorTests+CalculatorTests`, and a fixture inside
+`namespace X` + `module M` is `X.M+Fixture`. `[<Category("…")>]`, `[<Explicit>]` and
+`[<Ignore("…")>]` behave exactly as their C# equivalents.
+
+An `.fsproj` has no implicit compile glob (the F# SDK sets `EnableDefaultCompileItems=false`), so
+only the files it lists as `<Compile Include="…" />` are scanned, in the order it lists them. `.fsi`
+signature files are included; `.fsx` scripts are not.
+
+The F# grammar is an approximation — F#'s offside rule cannot be expressed context-free — and a
+small share of real-world files defeat it. Such a file is never quietly walked for a partial result:
+the project is reported (see below) so you can see which tests are missing from the plan.
+
+## Nothing vanishes from a plan
+
+A project that references a test framework but contributes no fixtures is **reported**, never
+silently dropped. Before this, such a project simply disappeared: the plan was smaller, the exit
+code was still `0`, and a CI shard step ran nothing and passed — a false green.
+
+Every such project is named on stderr with the reason and the consequence, and listed under
+`skippedProjects` in `--format json` and in the `--report <DIR>` artifact:
+
+```
+test-plan: test project 'Vb.Tests/Vb.Tests.vbproj' contributed no fixtures: its source language is
+not parsed for test discovery (.vbproj) — none of its tests will run in any shard.
+```
+
+| `reason` | Meaning |
+|---|---|
+| `language-not-supported` | Nothing parses this project's sources (VB.NET today). |
+| `source-discovery-failed` | The project's compile items could not be evaluated. |
+| `no-source-files` | The project declares no sources at all. |
+| `no-parsable-sources` | Sources exist, but none of them parsed. |
+| `some-sources-unparsed` | The project **is** in the plan, but tests in the unparsed files are not. |
+| `no-fixtures` | Everything parsed and no NUnit fixture was declared (a scaffolded test project). |
+
+Warning is the default so an upgrade cannot break a repo with a legitimately empty test project. Add
+`--fail-on-skipped-projects` to exit `167` instead — the setting to reach for once you have cleaned
+those up, so a test project that quietly stops contributing tests can never report green again.
 
 ## Build-cache test impact
 

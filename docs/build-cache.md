@@ -275,6 +275,13 @@ key-format version (`keyformat=` in the text header, `keyFormatVersion` in `--js
 key-format change invalidates prior entries (a one-time cold rebuild), and it is visible in the report
 before the run.
 
+The input fingerprint covers the sources the project's **own language** compiles — `.cs` for a
+`.csproj`, `.fs`/`.fsi` for an `.fsproj` — plus the project file, its resolved import chain, and the
+lock file. For F# the fingerprint is additionally **order-sensitive**: F# compile order is part of the
+language (a definition must precede its use, and an `.fsi` signature must precede its `.fs`), so
+reordering `<Compile Include>` items is a different compilation and gets a different key. C# compile
+order carries no meaning, so a C# project's key is unaffected by this and stays exactly what it was.
+
 ## Sharding the build across agents
 
 `dotnet-fast build` runs on one agent, so a cold cache or a foundation change compiles the whole

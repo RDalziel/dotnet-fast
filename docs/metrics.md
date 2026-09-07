@@ -66,7 +66,7 @@ nothing was checked would be worse than no board.
 | Surviving mutants | 0 | `maxSurvivingMutants` | From `--mutation`. Counts both `Survived` and `NoCoverage`. |
 | Dead code | 0 | `maxDeadCode` | Reuses the [`dead-code`](dead-code.md) analysis; opt in with `--include-dead-code`. |
 | Redundant code | 0 | `maxDuplicateBodies` | Members with byte-identical bodies inside one file. |
-| Dynamic typing | 0 | `maxDynamicUses` | `dynamic` in a type position — C#'s nearest equivalent to TypeScript's `any`. |
+| Dynamic typing | 0 | `maxDynamicUses` | The `any` analogue: `dynamic` in a type position (C#); `obj` in a type position, `box`/`unbox`, and the `?` dynamic-lookup operator (F#). See [Languages](#languages-c-and-f). |
 | Lines per member | ≤ 50 | `maxLinesPerMember` | Non-blank lines in one member. |
 | Nesting depth | ≤ 3 | `maxNestingDepth` | Deepest `if`/`for`/`foreach`/`while`/`do`/`switch` nesting in one member; a flat `else if` chain counts as one level. |
 | Parameter count | ≤ 7 | `maxParameters` | Declared parameters on one member. |
@@ -103,8 +103,61 @@ sniffer decide — useful if a generator writes an unusual extension.
 
 A report that scores nothing — an empty coverage document, a mutation run that produced no results —
 is a **hard error**, not a `0` that reads as a pass. Files `metrics` could not read, and files whose
-C# does not parse, are counted and reported rather than skipped silently (`summary.readFailures` and
-`summary.filesWithSyntaxErrors` in the JSON).
+source does not parse, are counted and reported rather than skipped silently
+(`summary.readFailures`, `summary.parseFailures` and `summary.filesWithSyntaxErrors` in the JSON).
+
+## Languages: C# and F#
+
+`metrics` scores **C# and F#**, each project in its own language. A mixed solution gets one
+scoreboard covering all of it — the same fourteen rows, the same budgets, one exit code — rather than
+a board that quietly describes only its C# half.
+
+```
+Metric                 Worst  Budget  Status
+…
+15 files, 62 members, 4 projects in 0.2s
+Languages: C# 11 files, 48 members; F# 4 files, 14 members
+```
+
+The `Languages:` line appears only when more than one language contributed. `--format json` always
+carries the breakdown as `summary.languages`, one entry per language walked:
+
+```json
+"languages": [
+  { "language": "csharp", "projects": 3, "files": 11, "members": 48,
+    "parseFailures": 0, "readFailures": 0, "filesWithSyntaxErrors": 0 },
+  { "language": "fsharp", "projects": 1, "files": 4, "members": 14,
+    "parseFailures": 1, "readFailures": 0, "filesWithSyntaxErrors": 0 }
+]
+```
+
+**What counts as a "member" in F#.** The same set of things C# measures, spelled F#'s way: a `let`
+that declares parameters (module-level, inside a type, or local), a `let` bound to a `fun`/`function`
+lambda, a `member` with an argument list, each `get`/`set` accessor, and an additional `new (…)`
+constructor. A `let` bound to a **value** (`let maxRetries = 3`) is not a member — it would otherwise
+add a stream of complexity-1, nesting-0 "members" that make a module of lookup tables read as a
+codebase full of trivially healthy code. A property with no argument list, a `member val`
+auto-property and an `abstract member` signature are likewise not measured, matching what the C# pass
+does with their C# equivalents.
+
+**Dynamic typing in F#.** F# has no `dynamic` keyword, so this row counts F#'s own ways out of the
+type system: `obj` (or `System.Object`) in a **type** position, `box`/`unbox`, and the `?` /
+`?<-` dynamic-lookup operators. A `0` therefore means what it means for C# — we looked, and found
+none — rather than "this language was not checked". A *value* named `obj` is not counted, and neither
+is `:?>`/`downcast` or a `:?` type-test pattern: those name a concrete target type, so the check moves
+to runtime rather than being erased, which makes them casts rather than `dynamic`. If your codebase
+overrides `Equals(obj)`, raise `metrics.maxDynamicUses` — the row deliberately has no built-in
+exemptions.
+
+**F# files the parser cannot read are reported, not dropped.** F#'s offside rule is not context-free
+and the grammar approximates it, so a small share of real files cannot be parsed. Those land in
+`summary.parseFailures` (and in that language's entry above), and the text board says
+`N file(s) could not be parsed and were excluded from every figure.` They are never silently measured
+as empty.
+
+**VB.NET is not scored.** Nothing here parses `.vb`. A `.vbproj` in the solution is reported rather
+than quietly counted as clean: a warning on stderr and an entry in `summary.skippedProjects`
+(`{ "project", "reason": "language-not-supported", "message" }`). It does not fail the command.
 
 ## Gating CI
 

@@ -2,18 +2,144 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.3.0`. Notes for every `0.x` release are in
+The current **stable** line is `1.4.0`. Pre-1.0 history — predating the compatibility promise and the
+NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
 
-> **Standing correction (2026-08-03): every whole-repository parity percentage published in an entry
-> dated before 2026-08-03 is withdrawn, and none of them should be quoted.** The harness that
-> produced them counted files *neither* tool had opened as matches, and it selected Polly's 20-file
-> `samples\Samples.slnx` rather than the 764-file `Polly.slnx` — so in particular **every "Polly 100%"
-> in these notes is wrong**, at every version it appears. Newtonsoft.Json's 945/945 is separately withdrawn
-> as a comparer artifact. The entries are left as they were written, with per-entry notes on the ones
-> that carried the headline claims; the only current figures are in the
-> [support matrix](docs/support-matrix.md), measured under a harness that verifies both tools processed
-> the same files and fails the run when they did not.
+## 1.4.0 — 2026-09-07
+
+### F# formatting: `--fantomas` drives Fantomas, so `--verify-no-changes` can finally tell the truth about F#
+
+`dotnet-fast lint --fantomas` and `dotnet-fast format --fantomas` format F# by running
+[Fantomas](https://fsprojects.github.io/fantomas/), the community-standard F# formatter — we do not
+reimplement it, and we do not intend to. F# is offside-rule: indentation is *syntax*, so a formatter
+that guesses wrong emits code that will not compile, and there is no oracle to catch that, because
+`dotnet format` has no F# support at all. Point real `dotnet format` at an `.fsproj` and it prints
+one line and **exits 0** — its `--verify-no-changes` gives a green build on completely unformatted
+F#. That is the gap this closes.
+
+**Fantomas decides how F# looks; we decide what gets formatted, when, and how it is reported.**
+Fantomas owns every style decision and is configured entirely by its own `.editorconfig` keys — the
+`fsharp_*` namespace plus `max_line_length`, `indent_size`, `end_of_line` and `insert_final_newline`.
+No `dotnet-fast` setting changes F# formatting.
+
+What `dotnet-fast` adds is the workflow:
+
+- **Project-aware, affected-scoped discovery.** `--project`, `--include`/`--exclude`, `--affected`,
+  `--staged`, `--from`/`--to` and `--ci` narrow the F# set exactly as they narrow the C# one.
+- **Unchanged files are skipped.** Fantomas has no notion of what changed and re-parses everything
+  every time. A content hash — keyed together with the resolved Fantomas version and the
+  `.editorconfig` chain, so an upgrade or a config edit correctly invalidates — means a second run
+  over an untouched tree starts Fantomas **zero** times.
+- **Batched.** Every file in scope goes out in as few invocations as a command line holds. On a
+  48-file fixture that is one process instead of 48 (~38× on the measured fixture), and the skip
+  cache then removes even that one on an unchanged re-run (~10× again).
+- **`.fantomasignore`, with Fantomas' own semantics** — the nearest one wins and they are *not*
+  merged the way `.gitignore` files are, so our file set and Fantomas' cannot drift apart.
+- **One report.** F# results land in the same summary, `--report` JSON and `--sarif` output as the C#
+  ones, tagged `engine: "fantomas"` / `language: "fsharp"`.
+
+Two findings, and they are deliberately different answers: `FSFMT001` "Fantomas would reformat this"
+(fixable) and `FSFMT002` "Fantomas could not process this" (not fixable — usually a file whose `#if`
+branches are not each valid F# on their own). A file that did not parse has not been checked, and is
+never reported as formatted.
+
+**Strictly opt-in and strictly additive.** Without the flag, nothing changes: `format` still never
+rewrites an F# file, and a C#-only run is byte-for-byte identical with and without `--fantomas`.
+Nothing is ever downloaded or installed — if Fantomas is missing, the run **fails with exit `168`**
+and prints the install command, rather than silently checking no F# and reporting success. The
+version pinned in the repository's `.config/dotnet-tools.json` is preferred over a global install, so
+everyone formats with the version the team chose.
+
+### F# formatting hygiene: four line-level rules `lint` now reports on `.fs`, `.fsi` and `.fsx`
+
+`dotnet-fast lint` previously had nothing to say about F# source. It now reports four things, and
+only four:
+
+| ID | Reports | `--fix` |
+|---|---|---|
+| `FSH0001` | Trailing whitespace at end of line | yes |
+| `FSH0002` | File does not end with a newline | yes |
+| `FSH0003` | Line ending does not match the resolved `end_of_line` | yes |
+| `FSH0004` | Tab character in leading whitespace | **no — reported only** |
+
+**The narrowness is the design, not a first cut.** F# is an offside-rule language: leading whitespace
+is syntax, so changing indentation changes what the program means. Reprinting F# properly needs a
+real parse, and [Fantomas](https://fsprojects.github.io/fantomas/) — an AST-based reprinter built on
+a fork of the F# compiler — is the community standard for that. We are not competing with it: the
+`--fantomas` lane above orchestrates it. These four are the changes that **cannot alter a parse at
+all**. Indentation, line wrapping, spacing and anything structural are explicitly out of
+scope.
+
+**`FSH0004` is a correctness check, not a style opinion.** The F# compiler rejects a tab outside a
+string literal or comment — error FS1161, "TABs are not allowed in F# code". It is reported and
+never fixed, because converting a tab to spaces needs the indent width the author meant, and under
+the offside rule a wrong width silently moves the line into a different block while still compiling.
+That asymmetry with the other three rules is deliberate.
+
+Details worth knowing:
+
+- **No parser.** These are checks on bytes, so they keep working on the F# files a grammar cannot
+  parse — which is exactly where you most need a tool to still say something.
+- **`.fsx` scripts are covered.** A script is not a `<Compile>` item of any project, so it is found
+  by walking each `.fsproj`'s directory. A script outside every `.fsproj` directory is not reached.
+- **`.editorconfig` as usual**, with no new keys: `end_of_line`, `insert_final_newline`,
+  `trim_trailing_whitespace`, and `dotnet_diagnostic.FSH000x.severity` (where `none` removes the
+  finding *and* withholds the fix).
+- **Nothing else moved.** The rules run under `lint` / bare `dotnet-fast` / `lint --fix` only. The
+  `dotnet format`-compatible verbs (`format`, `whitespace`, `style`, `analyzers`, and the
+  `dotnet-format-fast` binary) never touch F#, because real `dotnet format` never did. A C#-only
+  repository sees byte-identical output in every mode, and the `DFxxxx` rule counts printed by
+  `lint --list-rules` are unchanged — `lint --explain FSH0004` is how you read these four.
+
+See [rules.md](docs/rules.md#f-formatting-hygiene-fsh0001fsh0004).
+
+### `test-plan` no longer drops a test project in silence
+
+Reported as [issue #1](https://github.com/RDalziel/dotnet-fast/issues/1): a project that
+`test-plan` classified as a test project but discovered no fixtures in was removed from the plan
+with **no diagnostic and exit `0`**. The reporter hit it after adding an F# NUnit project to a
+sharded workspace — the project built, `dotnet test` ran its three tests locally, and CI stayed
+green while never executing them. A false green is the worst thing this tool can produce, so both
+halves are fixed.
+
+- **Every such project is now reported.** It is named on stderr with the reason and the consequence
+  ("none of its tests will run in any shard"), and appended to `--format json` and the
+  `--report <DIR>` artifact as a new `skippedProjects` array. `reason` is one of
+  `language-not-supported`, `source-discovery-failed`, `no-source-files`, `no-parsable-sources`,
+  `some-sources-unparsed` or `no-fixtures`. Existing JSON fields are unchanged; the array is always
+  present, usually empty.
+- **New `--fail-on-skipped-projects`** exits `167` instead of warning. Off by default: a scaffolded
+  but still-empty test project is legitimate, and a new non-zero default would break those repos.
+  Turn it on once yours has none, and a test project that quietly stops contributing tests can never
+  report green again.
+- **F# NUnit fixtures are discovered.** `[<TestFixture>]` types, types with `[<Test>]` members and
+  no attribute, module-level `[<Test>] let` bindings (the module is the fixture), nested modules,
+  `[<AbstractClass>]` bases, `[<SetUpFixture>]` exclusion, and ``double-backtick`` names. Fixture
+  names use the same runtime form as C# — a module compiles to a class, so a type in
+  `module CalculatorTests` is `CalculatorTests+CalculatorTests`. Every name form was checked against
+  a real `dotnet test` run. See [test-sharding.md](docs/test-sharding.md#f-test-projects).
+- **`.fsproj` compile items are evaluated properly** rather than falling back to a `*.cs` directory
+  walk: no implicit compile glob (the F# SDK disables it), declared order preserved, `.fs` and
+  `.fsi` included, `.fsx` scripts excluded.
+- **A solution resolves to the same project set everywhere.** `affected` returned an `.fsproj`
+  listed in a `.sln`/`.slnx` while `format`/`lint` skipped it. Both now read one predicate, so an
+  F# project in a solution is visible to every command. An `.fsproj` is also accepted as a target
+  where it used to be rejected outright.
+- `docs/support-matrix.md` said flatly that "VB and F# projects are not analyzed", which
+  contradicted `affected`'s documented behaviour and is now wrong for `test-plan` too. It states
+  what each command actually reads.
+
+No existing flag, default, output field or exit code changed.
+
+### `--help` doc pointers fixed
+
+Three `--help` descriptions (`dead-code`, `dead-dependencies`, and `lint`'s
+`--only-active-analyzers`) linked to a doc path that does not exist in the public repo — the pointer
+went nowhere. `dead-code --help` now points at `docs/dead-code.md`, `dead-dependencies --help` at
+`docs/dead-dependencies.md`, and `--only-active-analyzers` at
+`docs/ported-analyzers.md#enabling-and-disabling-ports`. Text-only fix — no flag, default, or output
+shape changed.
 
 ## 1.3.0 — 2026-09-03
 
@@ -349,7 +475,8 @@ differently from its documentation are all worth an issue.
 
 ## Older releases
 
-Notes for every `0.x` release are in **[RELEASES-0.x.md](RELEASES-0.x.md)**.
+The `0.x` series predates the `1.0.0` compatibility promise and the NuGet package; its notes were
+retired to git history — **[RELEASES-0.x.md](RELEASES-0.x.md)** says where to find them.
 
 ---
 

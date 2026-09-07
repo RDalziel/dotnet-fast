@@ -65,6 +65,7 @@ Useful options:
 | Option | Effect |
 |---|---|
 | `--fix` | Apply the safe fixes (whitespace, style, simple lint rules) — changes only what it reports. |
+| `--fix-safe-only` | Like `--fix`, but apply only Safe-tier CST autofixes — the redundancy/style cleanups — and hold back behavior-preserving (performance) and suggestion (correctness/concurrency/maintainability) rewrites for review. Whitespace/style/analyzer formatting still applies. `--list-rules`/`--explain` show each rule's tier. |
 | `--deep` | Opt in to the project's real Roslyn analyzers — the semantic rules the syntactic default can't run. Needs the .NET SDK + a restored project; degrades to the fast path when unavailable. |
 | `--deep-cache` | Cache `--deep` diagnostics per project in the build cache so unchanged projects skip the re-bind (scales with change). Needs a configured build cache; opt-in. |
 | `--staged` / `--affected` / `--ci` / `--pr-base <branch>` | Scope to changed files — the index, the branch, or the CI range. |
@@ -165,6 +166,84 @@ dotnet-fast format App.sln            # format in place
 dotnet-fast format --check App.sln    # report files that would change, change nothing (CI check)
 ```
 
+### F# formatting with Fantomas
+
+F# is an offside-rule language: leading whitespace is *syntax*, so mis-indenting a line does not make
+code ugly, it makes it mean something else or stop compiling. Writing another F# formatter is
+therefore a bad trade, and one already exists —
+[Fantomas](https://fsprojects.github.io/fantomas/) is the community standard, is AST-based on a fork
+of the F# compiler, and is what Microsoft's own F# style guide defers to.
+
+So `dotnet-fast` **drives Fantomas** rather than reimplementing it. Pass `--fantomas` to `lint` or
+`format`:
+
+```bash
+dotnet-fast lint --fantomas App.sln              # report F# files Fantomas would reformat
+dotnet-fast format --fantomas App.sln            # apply
+dotnet-fast lint --fix --fantomas App.sln        # apply, alongside every C# fix
+dotnet-fast format --fantomas --verify-no-changes App.sln   # the CI gate
+dotnet-fast lint --fantomas --affected .         # only the F# files this branch changed
+```
+
+**Fantomas owns every style decision, and is configured by its own `.editorconfig` keys** — the
+`fsharp_*` namespace plus `max_line_length`, `indent_size`, `end_of_line` and `insert_final_newline`.
+No `dotnet-fast` setting changes how F# is formatted, and none ever will; see
+[Fantomas' configuration reference](https://fsprojects.github.io/fantomas/docs/end-users/Configuration.html).
+What this tool decides is the workflow around it: which files Fantomas sees, that it is not asked
+about files it has already formatted, and how the result is reported.
+
+- **Opt-in.** Without the flag nothing here reads, writes or reports on a `.fs`/`.fsi`/`.fsx` file's
+  formatting, and a C#-only run is byte-for-byte identical with and without it.
+- **Scoped like the C# lane.** `--project`, `--include`/`--exclude`, `--affected`, `--staged`,
+  `--from`/`--to` and `--ci` narrow the F# set exactly as they narrow the C# one. Files come from
+  each `.fsproj`'s `<Compile>` items (the F# SDK has no implicit glob) plus `.fsx` scripts beside
+  them.
+- **`.fantomasignore` is honoured, with Fantomas' semantics.** Unlike `.gitignore`, ignore files are
+  **not merged**: Fantomas finds the nearest one at or above its working directory and uses only
+  that. Patterns are gitignore syntax, `!` negation included, relative to the ignore file's own
+  directory.
+- **Unchanged files are skipped.** A content hash — combined with the resolved Fantomas version and
+  the `.editorconfig` chain that applies — records what has already been formatted, so a second run
+  over an untouched tree starts Fantomas zero times. Editing a file, upgrading Fantomas, or changing
+  any `.editorconfig` in the chain invalidates it. `--no-cache` turns it off.
+- **Batched.** Every file in scope goes out in as few invocations as a command line will hold, rather
+  than one process per file. On a 48-file fixture that is one process instead of 48; the skip cache
+  then removes even that one on an unchanged re-run.
+
+#### Two findings, and the difference matters
+
+| Rule | Meaning | Fixable |
+|---|---|---|
+| `FSFMT001` | Fantomas would reformat this file | yes — `lint --fix --fantomas` |
+| `FSFMT002` | Fantomas could not process this file | no |
+
+`FSFMT002` is usually a file whose `#if` branches are not each valid F# on their own — Fantomas parses
+every branch. It is deliberately **not** reported as "formatted": a tool that could not read a file has
+not checked it, and saying otherwise would be exactly the false green this lane exists to remove. Note
+that real `dotnet format` has no F# support at all — pointed at an `.fsproj` it prints one line and
+exits 0, so `dotnet format --verify-no-changes` passes on unformatted F#.
+
+Findings appear in the normal summary, in `--report`'s `format-report.json`, and in `--sarif` (where
+they carry `properties.engine = "fantomas"` and `properties.language = "fsharp"`, so a code-scanning
+consumer can tell which findings carry an external tool's opinion).
+
+#### When Fantomas is not installed
+
+`--fantomas` never fetches, restores or installs anything. If Fantomas cannot be run, the command
+**fails with exit `168`** and prints how to install it — it does not quietly check no F# and report
+success:
+
+```
+dotnet new tool-manifest        # if .config/dotnet-tools.json does not exist yet
+dotnet tool install fantomas    # pinned for the repository (preferred)
+dotnet tool install -g fantomas # or just for you
+```
+
+The repository's own pin wins: if `.config/dotnet-tools.json` declares `fantomas`, that is the version
+used, even when a newer global tool is installed — formatting is a whole-repo agreement, and two
+versions in one repo reformat each other's diffs. A manifest that declares Fantomas but has not been
+restored is reported as such, pointing at `dotnet tool restore`.
+
 ---
 
 ## `affected`
@@ -182,53 +261,37 @@ The output is the list of affected project paths; `--json` gives you the structu
 matrix. On shallow CI checkouts, explicit `--from <REV>` / `--to <REV>` ranges deepen and retry when a
 named commit is missing, while keeping direct `from..to` comparison semantics.
 
+| Option | Effect |
+|---|---|
+| `-f`, `--format <FORMAT>...` | Output format(s): `traversal` (default), `text`, `json`, `matrix`, `dotnet-test`, `sarif`, or `count`. Repeatable — pass it more than once, or with several values, to write more than one shape in a single run. |
+| `-p`, `--repository-path <PATH>` | Path to the Git repository root. Defaults to the current repository. |
+| `--solution-path <PATH>` (alias `--solution-file`) | Limit project discovery to the projects reachable from this solution file. |
+| `--output-dir <DIR>` | Directory generated output files are written to. Relative paths resolve from the repository root. |
+| `--output-name <NAME>` | Base name for generated output files (default `affected`) — the README's CI snippet's `--output-name affected` names the file `affected.<ext>`. |
+| `--assume-changes <PROJECT>...` | Assume the given project names or paths changed instead of reading the Git diff — useful for a dry run or a change set Git cannot see. |
+| `--default-branch <BRANCH>` | Override the detected default branch (`main`/`master`) used as the CI-resolution fallback base. |
+| `--push` | Force push/branch-build mode: diff against the current commit's parent, overriding `--ci` detection. |
+| `--traversal-sdk-version <VERSION>` | `Microsoft.Build.Traversal` SDK version pinned in the generated traversal output's `<Project Sdk="...">` (default `3.0.3`). |
+| `--tests-only` | Restrict the affected set to test projects (referencing `Microsoft.NET.Test.Sdk`, xUnit, NUnit, or MSTest). Composes with every `--format`. Exits `166` when no affected project is a test project. |
+| `-e`, `--exclude-project <REGEX>...` | Exclude affected projects whose name or full path matches the regex. Repeatable. |
+| `--verbose` | Print progress and timing information while calculating affected projects. |
+
 For GitHub Actions push builds, `--ci` uses the event `before` SHA when it is available, so
-multi-commit pushes are included. Providers that do not expose that SHA still compare push builds to
-the parent commit. On Azure Pipelines batched/coalesced branch builds, use
-`--ci-base last-successful-build` to query the previous completed+succeeded build for this
-definition+branch and use its `triggerInfo['ci.sourceSha']` as the base — this needs
-`SYSTEM_ACCESSTOKEN` in the step environment
-(see [Azure DevOps](azure-devops.md#batched-trigger-builds---ci-base-last-successful-build)). When that
-lookup cannot complete (missing/invalid token, no prior successful build), `--ci-base-fallback` decides
-the behavior: `previous-commit` (default) narrows to the parent commit — which **silently under-builds a
-batched trigger** — while `--ci-base-fallback all` conservatively builds every project and
-`--ci-base-fallback error` fails loudly. This is separate from `--on-missing-base`, which governs an
-unresolvable explicit `--from`/`--to`/`--base`.
-
-`--ci-base last-completed-build` is the same lookup but also accepts a `partiallySucceeded` build.
-Use it when the pipeline has a `continueOnError: true` step: such a step failing prevents the build
-from ever reaching `succeeded`, so the baseline never advances and the comparison window grows until
-it covers the whole solution
-(see [when every project comes back affected](azure-devops.md#if-every-project-comes-back-affected)).
-
-**When a pipeline step dirties a tracked file.** Some pipelines rewrite a checked-in file before the
-build — swapping in a `NuGet.Config` or `.npmrc` that points at an internal feed is the common one.
-That is a real change to a real shared config, so `affected` correctly fans out to every project.
-`--exclude` does not help: it filters *projects* out of the result, never files out of the diff.
-
-```bash
-dotnet-fast affected --ci --ignore-changed NuGet.Config --ignore-changed .npmrc
-```
-
-`--ignore-changed <PATH>` drops matching paths from the changed set before the graph walk. Every
-ignored path is printed, and a pattern that matches nothing warns — dropping a change is the one
-direction that can **under-build**, so it never happens quietly.
-
-Prefer fixing the pipeline where you can: write the file outside the repository, or
-`git update-index --skip-worktree` it, so the tree stays clean and nothing needs ignoring.
-
-**Azure DevOps output variables.** Instead of parsing `--format count` and hand-echoing a logging
-command, emit the pipeline variable natively:
+multi-commit pushes are included; providers that don't expose that SHA compare to the parent commit.
+`--ci-base last-successful-build` / `last-completed-build` and their `--ci-base-fallback` handle Azure
+Pipelines' batched/coalesced branch builds, where the naive parent-commit baseline silently
+under-builds — see [Azure DevOps](azure-devops.md#batched-trigger-builds---ci-base-last-successful-build)
+for the full mechanics and worked pipelines.
 
 | Option | Effect |
 |---|---|
-| `--set-variable <NAME>` | Emit `##vso[task.setvariable variable=<NAME>]true\|false` — `true` when any project is affected. Use it in a later `condition: eq(variables.<NAME>, 'true')`. |
-| `--set-count-variable <NAME>` | Emit `##vso[task.setvariable variable=<NAME>;isOutput=true]<count>` — the affected-project count as a cross-stage output variable. |
-| `--exit-zero-on-empty` | Exit `0` instead of `166` when nothing is affected (outputs and variables are still emitted). |
+| `--ignore-changed <PATH>` | Drop matching paths (repeatable; plain path or glob) from the changed set before the graph walk — for a pipeline step that rewrites a tracked file (e.g. swapping in an internal `NuGet.Config`) before `affected` runs. Every ignored path is printed, and a pattern matching nothing warns; `--exclude-project` filters *projects*, this filters *files*. |
+| `--set-variable <NAME>` | Emit an Azure DevOps `##vso[task.setvariable variable=<NAME>]true\|false` — `true` when any project is affected. |
+| `--set-count-variable <NAME>` | Emit an Azure DevOps `##vso[task.setvariable variable=<NAME>;isOutput=true]<count>` cross-stage output variable with the affected-project count. |
 
 Both variable flags compose with any `--format` and never change the exit code — pair with
 `--exit-zero-on-empty` so the step also succeeds on an empty set. See
-[Azure DevOps](azure-devops.md) for a full pipeline.
+[Azure DevOps](azure-devops.md) for the full pipeline wiring.
 
 ---
 
@@ -282,7 +345,7 @@ See [build-cache.md](build-cache.md) for setup, CI examples, and the build-shard
 ## `test-plan`
 
 NUnit test sharding for CI agents. Tests are discovered from source and partitioned before test
-assemblies are built.
+assemblies are built. **C# and F# test projects** (`.csproj`, `.fsproj`) are both discovered.
 
 ```bash
 dotnet-fast test-plan --shards 8 --format matrix .
@@ -322,6 +385,7 @@ Useful options:
 | `--verify` | Run `dotnet test` and confirm the shard union matches the baseline list. |
 | `--ci` / range flags | Shard only affected test projects. |
 | `--exit-zero-on-empty` | Exit `0` instead of `166` when the affected range leaves no test project to shard (the empty plan is still emitted). Mirrors `affected --exit-zero-on-empty`. |
+| `--fail-on-skipped-projects` | Exit `167` when a project classified as a test project contributes no fixtures (or only part of them). Those projects are **always** warned about on stderr and listed as `skippedProjects` in `--format json` / `--report`; this flag makes it a hard failure. Off by default, because a scaffolded-but-still-empty test project is legitimate. |
 | `--timings <FILE>` / `--use-cached-timings` | Balance shards by prior-run fixture duration instead of static test count (a local `{ "Ns.Fixture": ms }` file, or the merged history stored in the build cache). |
 | `--record-timings` (`--exec` + `--results-dir`) | After running a shard, roll its TRX durations into the cached history so future plans can `--use-cached-timings`. |
 | `--timings-scope <KEY>` | Scope key for the cached timing history (defaults to the current Git branch). |
@@ -332,18 +396,29 @@ same flags, race-free when parallel shards record, with default-branch fallback 
 branches; see
 [test-sharding.md](test-sharding.md#azure-table-storage-timings-multi-repo-race-free).
 
-> **A cache-restored shard can only test what its packages folder points at.** The build cache
-> restores `obj/` — including the generated `*.nuget.g.props` — but that file only holds a *pointer*
-> to the global NuGet packages folder, which is agent state the cache never ships. If `NUGET_PACKAGES`
-> was set when the cache entry was produced, its literal absolute path is baked in; on an agent
-> without that directory MSBuild silently skips the `Microsoft.NET.Test.Sdk` import, `IsTestProject`
-> is never set, and `dotnet test --no-build --no-restore` exits `0` having run nothing.
->
-> Since **v0.306.0** `test-plan --exec --restore-from-cache` pre-flights the restored closure
-> whenever `--test-args` suppresses restore, and **refuses to run** (exit `1`) rather than report a
-> green shard that tested nothing. Unsetting `NUGET_PACKAGES` everywhere is the durable fix: NuGet
-> then bakes the portable `$(UserProfile)\.nuget\packages\` form, which resolves on any agent.
-> Details in [test-sharding.md](test-sharding.md).
+**A test project that contributes no fixtures is never dropped in silence.** If a project references
+a test framework but yields no tests to shard — its language is not parsed (VB.NET), its sources are
+missing or unparsable, or it simply declares no fixture — `test-plan` names it on stderr, says why,
+and lists it under `skippedProjects` in the JSON plan and the `--report` artifact:
+
+```json
+"skippedProjects": [
+  { "project": "Vb.Tests/Vb.Tests.vbproj",
+    "reason": "language-not-supported",
+    "message": "its source language is not parsed for test discovery (.vbproj)" }
+]
+```
+
+`reason` is one of `language-not-supported`, `source-discovery-failed`, `no-source-files`,
+`no-parsable-sources`, `some-sources-unparsed` (the project IS in the plan, but tests in the
+unparsed files are not) or `no-fixtures`. Add `--fail-on-skipped-projects` to turn the warning into
+exit `167` once your repo has no legitimately-empty test projects left.
+
+**A cache-restored shard can only test what its packages folder points at** — keep `NUGET_PACKAGES`
+aligned (or unset) between the agent that populates the cache and the agents that consume it, or a
+shard can report green having tested nothing. `test-plan --exec --restore-from-cache` guards against
+this since v0.306.0; see
+[test-sharding.md](test-sharding.md#end-to-end-optimized-pipeline) for the full failure mode and the fix.
 
 See [test-sharding.md](test-sharding.md) for CI examples and NUnit details.
 
@@ -398,23 +473,8 @@ dotnet-fast metrics App.sln --by-project             # one line per project, app
 dotnet-fast metrics App.sln --format json            # machine-readable
 ```
 
-```
-Metric                 Worst  Budget  Status
-Cyclomatic complexity     41   <= 22  7 members over budget
-Cognitive complexity      38   <= 22  5 members over budget
-Halstead difficulty      112   <= 80  3 members over budget
-Lines per file           913  <= 500  11 files over budget
-Test coverage          71.4%    100%  over budget
-CRAP                    96.0   <= 25  9 members over budget
-Surviving mutants          -       0  not measured — pass --mutation <mutation-report.json>
-Dead code                  6       0  6 symbols over budget
-Redundant code             4       0  4 duplicates over budget
-Dynamic typing             2       0  2 uses over budget
-Lines per member          74   <= 50  6 members over budget
-Nesting depth              4    <= 3  2 members over budget
-Parameter count             9    <= 7  1 member over budget
-Maintainability index   31.2   >= 20  ok
-```
+Sample scoreboard output (all fourteen rows, with an unmeasured one) is in
+[metrics.md](metrics.md#quick-start).
 
 **A metric you did not measure never reads as passing.** An unmeasured row says *not measured*, names
 the flag that would fill it, and is ignored by `--fail-on-budget`. A green board that is green because
@@ -517,13 +577,8 @@ An unsupported combination — `spdx` with `--output-format xml`, or `cyclonedx`
 `--spec-version 2.2` — fails with an error listing exactly what *is* supported, never a silent
 fallback to whichever serializer happens to be newest.
 
-A `.csproj` target requires a `packages.lock.json` next to it (`dotnet restore` with
-`<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>`); without one, `bom` fails clearly
-rather than guessing the transitive graph. A solution run is more forgiving per project: lock file
-preferred, falls back to a restored `obj/project.assets.json`, else that project is skipped with a
-stated reason (never a silent partial document). `serialNumber` is derived from the document's own
-content, not the current time — re-running against an unchanged project or solution reproduces the same
-`serialNumber`. See [bom.md](bom.md) for the full component model, tier table, and document shapes.
+See [bom.md](bom.md) for the two source tiers (lock file vs. restored assets), the full component
+model, and why `serialNumber` is reproducible across reruns of an unchanged project.
 
 ---
 
@@ -708,6 +763,7 @@ format — indistinguishable from a typo. They now say what happened and what to
 | Option | Effect |
 |---|---|
 | `--json` | Machine-readable output, including the run's own timing. |
+| `--color <WHEN>` | When to colorize console output: `auto` (default — color a TTY), `always`, or `never`. Honors the `NO_COLOR` and `CLICOLOR_FORCE` environment conventions. |
 | `--no-deep` | Force the fast native path for one run (overrides any deep-by-default setting). |
 | `--help` | Per-command help. |
 

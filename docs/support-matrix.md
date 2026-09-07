@@ -196,7 +196,40 @@ appear here.
   **Supported input** above), but not a validated, supported project shape. Commands that depend on a
   reliable project graph skip them with a stated reason rather than reporting partial or guessed
   results.
-- **VB.NET and F#** — `dotnet-fast` is a C# tool; VB and F# projects are not analyzed.
+- **F#** — supported across the board, so a mixed C#/F# solution is handled rather than half-skipped.
+  `affected`, `build`, `doctor` and `bom` work from the project graph and treat `.fsproj` like any
+  other project. `test-plan` discovers NUnit fixtures from F# sources, `metrics` scores F# against the
+  same budgets, and `dead-dependencies` reads `open` declarations the way it reads `using` directives.
+
+  **F# formatting is done by driving [Fantomas](https://fsprojects.github.io/fantomas/), not by a
+  formatter of our own.** F# is offside-rule — indentation is syntax, not style, so a formatter that
+  guesses wrong produces code that does not compile or quietly means something else — and Fantomas is
+  the community standard, is AST-based on a fork of the F# compiler, and is what Microsoft's F# style
+  guide defers to. Pass `--fantomas` to `lint` or `format` and it runs, scoped by the same
+  `--project`/`--include`/affected flags as the C# lane, skipping files whose content it has already
+  formatted, honouring `.fantomasignore`, and reporting into the same summary/JSON/SARIF output
+  (`FSFMT001` would reformat, `FSFMT002` could not parse). **Fantomas owns every style decision** and
+  is configured by its own `.editorconfig` keys (`fsharp_*`, plus `max_line_length`, `indent_size`,
+  `end_of_line`, `insert_final_newline`) — no `dotnet-fast` setting changes how F# looks. It is
+  strictly opt-in: without `--fantomas`, `format` never rewrites an F# file, and if Fantomas is not
+  installed the run fails with exit `168` and the install command rather than reporting a repository
+  of unformatted F# as clean. Nothing is ever fetched or installed. See
+  [commands](commands.md#f-formatting-with-fantomas).
+
+  Two further limits are deliberate, and each exists because the alternative would be a confident
+  wrong answer. **`dead-code` reports unused members only** — not unused types, test-only symbols or
+  dead projects, and never with `--fix` — because F# type inference lets a record literal or a union
+  case use a type without ever naming it, so absence of a name is not absence of use. **`lint`'s
+  native rules cover F# hygiene only** (`FSH0001`–`FSH0004`: trailing whitespace, final newline, line
+  endings, and tab characters, which the F# compiler rejects outright as FS1161); the C# rule catalog
+  does not apply to F#, and everything structural belongs to Fantomas.
+
+  F# source is parsed with a grammar that cannot parse every file. A file it rejects, or a project
+  whose language nothing here reads, is **reported with a stated reason** — in the plan, the
+  scoreboard or the findings — never silently skipped.
+- **VB.NET** — `.vbproj` project graphs resolve, so `affected` and the build cache treat them like
+  any other project, but no command reads VB source. A VB project reaching a command that needs
+  source is reported with a stated reason rather than dropped.
 - **`restore` and SBOM-as-of-v0.154** — a legacy `restore`/`update`/SBOM feature set was removed in
   v0.154.0 as part of a scope narrowing to format/lint/affected/CI-acceleration. `restore` has not been
   reintroduced and there is no plan to. (The current `bom` command described above is a distinct,

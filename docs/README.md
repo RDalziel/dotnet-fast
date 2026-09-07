@@ -1,7 +1,8 @@
 # dotnet-fast documentation
 
-Every page, grouped by what you are trying to do. If you only read one, read
-[commands.md](commands.md) — it is the full reference for every command and flag.
+Every page, grouped by what you are trying to do. Wiring a CI gate? Start with
+[ci.md](ci.md). Chasing a code-health number? Start with [metrics.md](metrics.md). Looking up a
+specific flag? [commands.md](commands.md) is the full reference for every command and option.
 
 ## Start here
 
@@ -18,11 +19,9 @@ Every page, grouped by what you are trying to do. If you only read one, read
 |---|---|
 | [rules.md](rules.md) | The native `DFxxxx` rule catalog: every rule `lint` reports by default, with its `--fix` status and how to suppress it. |
 | [deep-linting.md](deep-linting.md) | `lint --deep` — running your project's real Roslyn analyzers, and when it is fast enough to leave on. |
-| [ported-analyzers.md](ported-analyzers.md) | Popular Roslyn analyzers re-implemented natively, so they run on the fast path without `--deep`. |
 | [guardrails.md](guardrails.md) | The seven opt-in rules for repositories where an agent writes the code and a human reviews it. |
 | [code-scanning.md](code-scanning.md) | SARIF output and a working GitHub code-scanning upload workflow. |
 | [editorconfig.md](editorconfig.md) | How `.editorconfig`/`.globalconfig` resolves: the chain, severity precedence, and the two line-budget systems that don't agree. |
-| [editorconfig-keys.md](editorconfig-keys.md) | Every recognised `.editorconfig` key — value shape, default, one line of meaning. |
 
 ## Code health
 
@@ -52,6 +51,16 @@ Every page, grouped by what you are trying to do. If you only read one, read
 | [releasing.md](releasing.md) | How a release is produced and which gates it clears before it is tagged. |
 | [security.md](security.md) | What is signed and checksummed, and what is deliberately *not* claimed. |
 | [../RELEASES.md](../RELEASES.md) | Plain-English release notes, newest first. |
+
+## Generated references
+
+Long, mechanically regenerated from the code — never edited by hand and never out of sync with it.
+Look here for a specific rule or key, not for an explanation.
+
+| Page | What it covers |
+|---|---|
+| [ported-analyzers.md](ported-analyzers.md) | Every ported analyzer, generated from the plugin registry: id, category, `--fix` status, upstream link. |
+| [editorconfig-keys.md](editorconfig-keys.md) | Every recognised `.editorconfig` key, generated from the parser: value shape, default, one line of meaning. |
 
 ---
 
