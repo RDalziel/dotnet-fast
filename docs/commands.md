@@ -94,6 +94,12 @@ you happen to touch are suppressed, so a branch that lags `main` is not failed b
 on an explicit `--from`/`--to` or `--ci` push build. Scoping affects reported findings only; `--fix`
 still rewrites whole files.
 
+**Every scope covers every language this tool reads.** `--staged`, `--affected`, `--ci`, `--pr-base`,
+`--base` and `--from`/`--to` resolve changed `.cs` **and** `.fs`/`.fsi`/`.fsx` files, so a changed F#
+file reaches the [F# hygiene rules](rules.md#f-formatting-hygiene-fsh0001fsh0004) and the
+[`--fantomas`](#f-formatting-with-fantomas) lane. Changed-line scoping applies to F# the same way it
+applies to C#.
+
 ### Guardrails (opt-in): keeping AI-written code reviewable
 
 Seven optional rules for repos where an agent writes the code and a human reviews it: no explanatory

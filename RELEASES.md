@@ -2,9 +2,29 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.4.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.4.1`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.4.1 — 2026-09-07
+
+### Fix: a changed F# file no longer slips through a scoped `lint`
+
+`lint --staged`, `--affected`, `--ci`, `--pr-base`, `--base` and `--from`/`--to` asked Git only for
+the changed **`.cs`** files. A changed `.fs`, `.fsi` or `.fsx` file was dropped from the scope
+before anything looked at it, so the F# hygiene rules (`FSH0001`–`FSH0004`, new in 1.4.0) and the
+`--fantomas` lane never saw it and the run reported clean — while a plain `lint .` over the same
+tree reported the findings. That is precisely how a pre-commit hook and a PR gate invoke this tool,
+so staging a problem F# file passed the gate.
+
+Changed-file discovery now covers every language the tool reads — `.cs` plus `.fs`/`.fsi`/`.fsx` —
+and the extension list is derived from one place, so a language added later cannot drift out of the
+Git queries again. Changed-line (hunk) scoping applies to F# exactly as it does to C#: an F# file
+touched on one line reports only that line's findings, and `lint --fix` on a scoped run fixes the
+in-scope F# files without touching F# files outside the scope.
+
+**C# behaviour is unchanged** — the scope was widened, never narrowed, so a C#-only repository
+produces byte-identical output on every scoped command.
 
 ## 1.4.0 — 2026-09-07
 

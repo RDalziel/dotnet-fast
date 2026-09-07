@@ -241,7 +241,13 @@ catalog:
 | `FSH0004` | Tab character in leading whitespace. | report-only — see below |
 
 **Explicitly out of scope: indentation, line wrapping, spacing, and anything structural.** Those
-belong to Fantomas, and a later release will orchestrate Fantomas itself rather than reimplement it.
+belong to Fantomas, which [`--fantomas`](commands.md#f-formatting-with-fantomas) orchestrates rather than
+reimplements.
+
+These rules run in every scope the C# rules run in: `--staged`, `--affected`, `--ci`, `--pr-base`,
+`--base` and `--from`/`--to` all resolve changed `.fs`/`.fsi`/`.fsx` files alongside changed `.cs`
+ones, and [changed-line scoping](commands.md#lint) narrows an F# report to the touched lines exactly
+as it does for C#.
 
 ### Why `FSH0004` is reported but never fixed
 
