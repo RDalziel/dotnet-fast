@@ -26,6 +26,17 @@ in-scope F# files without touching F# files outside the scope.
 **C# behaviour is unchanged** — the scope was widened, never narrowed, so a C#-only repository
 produces byte-identical output on every scoped command.
 
+This completes the F# work that began with [issue #1](https://github.com/RDalziel/dotnet-fast/issues/1).
+With 1.4.0 and this fix together, one invocation covers both languages and only what changed:
+
+```bash
+dotnet-fast lint --fix --fantomas --staged .
+```
+
+C# formatted and linted, F# hygiene fixed, F# structure formatted by your pinned Fantomas. What F#
+does and does not support, with the reason for each limit, is in
+[support-matrix.md](docs/support-matrix.md).
+
 ## 1.4.0 — 2026-09-07
 
 ### F# formatting: `--fantomas` drives Fantomas, so `--verify-no-changes` can finally tell the truth about F#
