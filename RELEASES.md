@@ -2,9 +2,47 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.4.1`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.5.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.5.0 — 2026-09-09
+
+### New guardrail: `DF9008` — documentation lives on the type
+
+`DF9001` reports comments that explain code, and exempts `///` XML documentation, because a public
+API contract is where prose belongs. Nothing bounded that exemption: a `///` block on every property
+and method satisfied `DF9001` while putting a second, unchecked copy of the type's contract on each
+member — a copy that rots the first time the code moves on without it.
+
+`DF9008` says **where** documentation belongs: on the `class` or `record`, and nowhere else.
+Documentation on a property, method, field, event, constructor or accessor is reported, as is a
+`///` block attached to no declaration at all. `/** … */` counts as documentation too. A multi-line
+block reports once, at its first line.
+
+The premise is that a type states its contract once, in one place a reader can find, and every member
+says what it does through its name and signature. When a member comment carried something the
+signature genuinely does not say — a unit, an accepted range, a threading rule — the rule's message
+points at the design move that closes the gap for good (`int Timeout` → `TimeoutSeconds`, or a
+`TimeSpan`) rather than at a better sentence.
+
+It is the most opinionated of the family, and deliberately narrow: only `class` and `record`
+(including `record class` and `record struct`) may carry documentation — an `interface`, `enum`,
+`struct` or `delegate` is reported like any member.
+
+**`DF9008` contradicts `SA1600`/`SA1601`/`SA1602`, and you must pick one.** Those ported StyleCop
+analyzers require documentation on exactly what `DF9008` forbids it on, and being ports they are on
+by default. Enable `DF9008` without switching them off and every public member draws two findings
+that cannot both be satisfied. They encode opposing conventions, so there is nothing to reconcile in
+code — [guardrails.md](docs/guardrails.md) spells out the conflict and gives you the three
+`severity = none` lines, and `editorconfig recommend --guardrails` now writes them **commented out**
+with the conflict stated above them, so adopting the profile is still one command and turning a
+default-on analyzer off stays your decision. The rest of the `SA16xx` family does not conflict.
+
+Like the rest of `DF900x` it is **off by default** and enabled only by its own
+`dotnet_diagnostic.DF9008.severity` line — a bulk `dotnet_analyzer_diagnostic.severity` key does not
+switch it on, so no repository acquires it on upgrade. It is report-only; `lint --fix` never deletes
+a comment on its account.
 
 ## 1.4.1 — 2026-09-07
 

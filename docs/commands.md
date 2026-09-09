@@ -118,6 +118,7 @@ dotnet_diagnostic.DF9004.severity = warning   # magic numbers
 dotnet_diagnostic.DF9005.severity = warning   # cyclomatic complexity
 dotnet_diagnostic.DF9006.severity = warning   # Halstead difficulty
 dotnet_diagnostic.DF9007.severity = warning   # cognitive complexity
+dotnet_diagnostic.DF9008.severity = warning   # docs only on a class or record
 
 # Thresholds, shown with their defaults — omit to keep them.
 dotnet_fast_max_lines_per_function = 50
@@ -142,6 +143,7 @@ kept for backward compatibility, is 250).
 | `DF9005` | a member over 22 independent paths | `dotnet_fast_max_cyclomatic_complexity` |
 | `DF9006` | a member over 80 Halstead difficulty | `dotnet_fast_max_halstead_difficulty` |
 | `DF9007` | a member over 22 cognitive complexity (nesting-weighted) | `dotnet_fast_max_cognitive_complexity` |
+| `DF9008` | a `///` XML documentation comment on anything but a class or record | — |
 
 Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one — see
 [editorconfig.md](editorconfig.md#precedence-which-severity-wins) for why a bulk key can't. Run
@@ -648,7 +650,7 @@ rules off — with reasoning and doc links. `--write` appends it to `<target>/.e
 [ported-analyzers.md](ported-analyzers.md).
 
 **`recommend --guardrails [target]`** prints a different profile instead: every AI-guardrail rule
-(`DF9001`-`DF9007`) enabled at the published code-health budget numbers, each stated explicitly
+(`DF9001`-`DF9008`) enabled at the published code-health budget numbers, each stated explicitly
 rather than left to the rule's own default — including `dotnet_fast_max_lines_per_file = 500`, the
 published SLOC budget, not the rule's own bare default of 250. `--write` appends it the same way,
 idempotently (a second run is a no-op) and without ever overwriting an existing file. See

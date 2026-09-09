@@ -147,7 +147,7 @@ dotnet dotnet-fast lint --list-rules
 ```
 
 ```
-839 native CST lint rules (DF0001-SYSLIB1045; 144 fixable):
+840 native CST lint rules (DF0001-SYSLIB1045; 144 fixable):
 
 Correctness (132):
   DF0001  [report-only]  Empty catch block swallows exceptions.

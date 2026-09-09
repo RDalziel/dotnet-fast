@@ -19,7 +19,7 @@ specific flag? [commands.md](commands.md) is the full reference for every comman
 |---|---|
 | [rules.md](rules.md) | The native `DFxxxx` rule catalog: every rule `lint` reports by default, with its `--fix` status and how to suppress it. |
 | [deep-linting.md](deep-linting.md) | `lint --deep` — running your project's real Roslyn analyzers, and when it is fast enough to leave on. |
-| [guardrails.md](guardrails.md) | The seven opt-in rules for repositories where an agent writes the code and a human reviews it. |
+| [guardrails.md](guardrails.md) | The eight opt-in rules for repositories where an agent writes the code and a human reviews it. |
 | [code-scanning.md](code-scanning.md) | SARIF output and a working GitHub code-scanning upload workflow. |
 | [editorconfig.md](editorconfig.md) | How `.editorconfig`/`.globalconfig` resolves: the chain, severity precedence, and the two line-budget systems that don't agree. |
 

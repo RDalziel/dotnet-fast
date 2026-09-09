@@ -1,6 +1,6 @@
 # Guardrails — lint rules for agent-written code
 
-Seven optional rules, `DF9001`–`DF9007`, for repositories where an agent writes some of the code and a
+Eight optional rules, `DF9001`–`DF9008`, for repositories where an agent writes some of the code and a
 human reviews it.
 
 They exist because of one asymmetry: **an agent will happily ignore a style guide, but it cannot
@@ -21,6 +21,7 @@ by default**. Nothing changes in your repository until you ask for it.
 | `DF9005` | A member with too many independent paths through it. | `dotnet_fast_max_cyclomatic_complexity` (22) |
 | `DF9006` | A member doing too many different things with too few values. | `dotnet_fast_max_halstead_difficulty` (80) |
 | `DF9007` | A member that is too hard to read, weighted by nesting. | `dotnet_fast_max_cognitive_complexity` (22) |
+| `DF9008` | A `///` documentation comment on anything but a class or record. | — |
 
 Two more of the ten published code-health budgets — redundant code and dynamic typing — are
 deliberately **not** guardrails here; see
@@ -39,6 +40,7 @@ dotnet_diagnostic.DF9004.severity = warning
 dotnet_diagnostic.DF9005.severity = warning
 dotnet_diagnostic.DF9006.severity = warning
 dotnet_diagnostic.DF9007.severity = warning
+dotnet_diagnostic.DF9008.severity = warning
 
 # Thresholds, shown with their defaults — omit any you are happy with.
 dotnet_fast_max_lines_per_function = 50
@@ -49,16 +51,16 @@ dotnet_fast_max_halstead_difficulty = 80
 dotnet_fast_max_cognitive_complexity = 22
 ```
 
-Or run `dotnet-fast editorconfig recommend --guardrails --write` to append all seven at once, with
+Or run `dotnet-fast editorconfig recommend --guardrails --write` to append all eight at once, with
 every threshold stated at the published code-health budget number rather than left to the rule's own
 default — see [Adopting them without a wall of findings](#adopting-them-without-a-wall-of-findings).
 
 Only a per-rule `dotnet_diagnostic.DF900x.severity` enables one. A bulk
 `dotnet_analyzer_diagnostic.severity` key does **not**, mirroring how Roslyn treats an analyzer that
 is disabled by default — so a repository that already sets a bulk severity does not silently acquire
-seven new rule families on upgrade.
+eight new rule families on upgrade.
 
-All seven are **report-only**. `lint --fix` never rewrites code on their account: "extract this into a
+All eight are **report-only**. `lint --fix` never rewrites code on their account: "extract this into a
 method" has no mechanical fix, and a tool that guessed at one would do more harm than good.
 
 ## The messages are the feature
@@ -210,10 +212,85 @@ Measured over the member's `body`; an expression-bodied member (`=>`) has none a
 matching `S3776`. Shares its scorer with `S3776` and `dotnet-fast metrics`, so no two of the three can
 disagree about a member.
 
+### `DF9008` — documentation lives on the type
+
+`DF9001` above exempts `///` documentation because a public API contract is exactly where prose is the
+right medium. This rule says **where** that contract belongs: on the `class` or `record`, and nowhere
+else. Documentation on a property, method, field, event, constructor or accessor is reported.
+
+The premise is that a type states its contract **once**, in one place a reader can find, and every
+member is expected to say what it does through its **name and signature** instead. Member-level prose
+is a second copy of that contract which nothing checks — it rots the first time the code moves on
+without it, and a wrong comment costs more than no comment.
+
+So the fix is to delete it. If it carried something the signature genuinely does not say — a unit, an
+accepted range, a thrown exception, a threading rule — that is a gap in the *design*, not in the
+prose, and the durable move is to close it:
+
+| The comment says | The design move |
+|---|---|
+| `/// <summary>Timeout in seconds.</summary>` on `int Timeout` | Rename to `TimeoutSeconds`, or make the type `TimeSpan`. |
+| `/// <summary>Must be between 1 and 100.</summary>` | A named type that cannot hold an invalid value, or a guard clause that says so in code. |
+| `/// <summary>Not thread-safe.</summary>` | Fold it into the **type's** `<summary>` — it is a property of the whole contract. |
+
+**This is narrower than "a type" on purpose.** Only `class` and `record` (including `record class` and
+`record struct`) may carry documentation. An `interface`, `enum`, `struct` or `delegate` is reported
+like any member — the rule enforces one documented shape, not a taxonomy of exceptions. If that is not
+the convention you want, this is the guardrail to leave off; it is the most opinionated of the eight.
+
+Mechanics worth knowing:
+
+- A multi-line block reports **once**, at its first line. The grammar makes every `///` line its own
+  comment, and five findings for one edit would be noise. A blank line starts a new block.
+- `/** … */` is reported alongside `///` — it is documentation to the C# compiler too, so exempting it
+  would leave a way to document a member that the rule never sees.
+- Documentation attached to **no** declaration at all — the last thing in a block or a file — is
+  reported, because it will never appear next to the thing it describes.
+- Exempt, as in `DF9001`: dotnet-fast suppression directives and `<auto-generated>` markers, which are
+  commonly written as `///` at the head of a generated file.
+
+**`DF9008` contradicts `SA1600`, and you must pick one.** The ported StyleCop analyzer
+[`SA1600`](ported-analyzers.md) ("Elements should be documented") requires a `///` comment on every
+externally visible type **and member** — the exact opposite of this rule. `SA1601` (partial elements)
+and `SA1602` (enumeration items) say the same thing for their own shapes. All three are ports, so
+unlike this family they are **on by default**. Enable `DF9008` without turning them off and every
+public member draws two findings that cannot both be satisfied: one telling you to add documentation,
+one telling you to remove it.
+
+There is no clever reconciliation here — they encode genuinely opposing conventions, and only you know
+which one your codebase wants. If you want `DF9008`, switch the other three off explicitly:
+
+```ini
+[*.cs]
+dotnet_diagnostic.DF9008.severity = warning
+
+# SA1600/SA1601/SA1602 require documentation on exactly what DF9008 forbids it on.
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.SA1602.severity = none
+```
+
+The rest of the `SA16xx` documentation family (`SA1604` onwards) does **not** conflict: those rules
+validate documentation that already exists — a missing `<param>`, a `<returns>` on a `void` method —
+so they simply never fire on a member that has none. You can leave them on.
+
+`dotnet-fast editorconfig recommend --guardrails` writes those three lines **commented out**, with the
+conflict spelled out above them — uncomment them if `DF9008` is the convention you want, or drop the
+`DF9008` line and keep the analyzers'. They are not written active because turning a default-on
+analyzer off is a bigger decision than switching a guardrail on, and the profile is append-only and
+additive by design.
+
+**One interaction to know about.** `DF9001`'s message tells you that a comment recording *why* is worth
+keeping, and to move it to `///` documentation. With `DF9008` also enabled, the destination for that
+move is the **type's** `<summary>` — not a `///` on the member the comment was sitting in, which trips
+this rule instead. The two rules are complementary halves of one axis rather than a contradiction:
+`DF9001` reports every comment that is not documentation, `DF9008` only ones that are, so no comment
+ever draws both findings.
+
 ## Redundant code and dynamic typing are covered elsewhere
 
 Two more of the ten published code-health budgets — redundant code and dynamic typing — could in
-principle become `DF9008`/`DF9009`. They do not, on purpose: **[`S4144`](ported-analyzers.md)** already
+principle have become guardrails of their own. They do not, on purpose: **[`S4144`](ported-analyzers.md)** already
 reports identical member bodies and **[`PH2044`](ported-analyzers.md)** already reports the `dynamic`
 keyword, and both are ported analyzers that are on **by default** (opt-out, unlike this opt-in family).
 A guardrail duplicating either detector would fire twice on the same line for anyone who has not
@@ -221,7 +298,9 @@ disabled the port — two findings for one defect is a bug, not a second opinion
 narrower or differently-scoped version of either check worth building: the ports already cover the
 budget's full scope, so a second implementation would only be a second place for the same logic to
 drift from the first. So: enable `S4144` and `PH2044` (on by default; nothing to switch on) to cover
-those two budgets, and use `DF9001`–`DF9007` above for the other five.
+those two budgets, and use `DF9001`–`DF9007` above for the other five. (`DF9008` is not a
+code-health budget at all — it is a documentation convention, added because the same "an agent cannot
+ignore a lint error" logic applies to where documentation lands.)
 
 ## Seeing where you stand
 
