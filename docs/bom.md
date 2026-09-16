@@ -44,13 +44,17 @@ A clean single-project run looks like this:
 bom: wrote 12 component(s) — 3 direct package(s), 9 transitive package(s), 1 project reference(s) — to App/bom.json (App)
 ```
 
-A solution run reports the project count too, and calls out any project it had to skip:
+A solution run reports the project count too, and calls out any project it had to skip — with the
+reason, indented under the project it belongs to:
 
 ```
 bom: wrote 41 component(s) — 9 direct package(s), 30 transitive package(s), 2 project reference(s) — to bom.json (App, 3 project(s))
-bom: 1 project(s) skipped (no lock file or restore output):
+bom: 1 project(s) skipped (no lock file or restore output — pass --restore to attempt one):
   - Tools: Tools/Tools.csproj
+      no packages.lock.json and no obj/project.assets.json found under Tools — enable <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile> and run `dotnet restore`, or otherwise restore the project, to include it in this BOM, or pass `--restore` to have this command do it for you
 ```
+
+(Paths are shown shortened here; the real output prints them in full.)
 
 ## Single project vs. solution
 
@@ -68,6 +72,12 @@ bom: 1 project(s) skipped (no lock file or restore output):
 | `lock` | `packages.lock.json` | Yes (SHA-512) | Preferred whenever present |
 | `assets` | `obj/project.assets.json` | **No** — left empty, a documented fidelity gap | No lock file, but the project has been restored |
 | `skipped` | — | — | Neither file exists — the project still appears in the document with a stated skip reason, never a silent gap |
+
+A skip reason is one string surfaced three ways, so they can never disagree: printed under the
+project in the human summary, carried as `skipReason` in `--json`, and attached to the project in the
+document itself as the `dotnet-fast:skip-reason` property (the package `comment` on SPDX). When the
+skip is a failed `--restore`, that reason carries `dotnet restore`'s own output tail, indented under
+the project so a multi-line MSBuild error stays visibly attached to the project it came from.
 
 ### Requires a lock file (single-project path) or a prior restore (solution path) — or pass `--restore`
 
@@ -248,7 +258,7 @@ when skipped):
   "summary": { "total": 41, "directPackages": 9, "transitivePackages": 30, "projectReferences": 2, "frameworks": ["net8.0"] },
   "projects": [
     { "name": "Core", "path": "Core/Core.csproj", "tier": "lock", "skipReason": null },
-    { "name": "Tools", "path": "Tools/Tools.csproj", "tier": "skipped", "skipReason": "no packages.lock.json and no obj/project.assets.json found under Tools — enable RestorePackagesWithLockFile and run `dotnet restore`, or otherwise restore the project, to include it in this BOM" }
+    { "name": "Tools", "path": "Tools/Tools.csproj", "tier": "skipped", "skipReason": "no packages.lock.json and no obj/project.assets.json found under Tools — enable <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile> and run `dotnet restore`, or otherwise restore the project, to include it in this BOM, or pass `--restore` to have this command do it for you" }
   ]
 }
 ```

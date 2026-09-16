@@ -2,9 +2,60 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.5.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.5.1`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.5.1 — 2026-09-16
+
+Three fixes. Two of them are the kind that matter most: cases where the tool told you it was safe and
+was not.
+
+### Fix: `lint --fix` no longer writes C# that does not compile (#252, #253)
+
+Two shapes produced a rewrite that the compiler then rejected:
+
+- **A line-wrap inside a string literal.** When the whitespace pass wrapped a long line containing an
+  interpolated string whose *hole* itself contained a literal (`$"…{string.Join(", ", x)}…"`), the
+  split point could land inside the nested literal's text, not just between arguments. The scanner is
+  now hole-aware: a nested literal ends where it really ends. (#252)
+- **A null check rewritten inside an expression tree.** `client != null ? client.Name : null` inside a
+  LINQ-to-Entities query was rewritten to `client?.Name` — which an expression tree cannot contain
+  (`CS8072`). It took **two** rules to close this: `DF0004` was guarded first, and the same shape then
+  fell through to the ported `RCS1206`, so the reporter's build stayed broken with a different error.
+  Both now withhold their fix when the expression could be an expression tree — query syntax or a
+  lambda — and keep reporting the finding as manual. (#253)
+
+Counts move in three places as a result, none of them a regression: whitespace findings drop on repos
+with nested interpolations (the tool was mis-reading them), and `DF0004` and `RCS1206` each shift a
+few findings from *fixable* to *manual* (measured: three on FluentValidation, none elsewhere in the
+validation corpus). Everything else in the fix path is byte-identical to 1.5.0 — the parity ledger
+gained two oracle-generated cases and the existing ones are untouched.
+
+A related problem the same investigation found in the *style* tier — `IDE0031`/`IDE0029` rewrites that
+can also produce non-compiling code — is a separate issue, filed as #271, and not in this release.
+
+### Fix: build cache no longer returns a stale assembly when only generated sources changed (#268)
+
+The cache key's input fingerprint skipped files the tool classifies as *generated* — an EF Core
+migration's `*.Designer.cs`, a `*ModelSnapshot.cs`, a committed `.g.cs`. Those are ordinary compiled
+sources, so a commit that touched only a model snapshot kept the old key and CI restored an assembly
+built without the change. The build cache now fingerprints every source the project actually compiles,
+excluding only `obj/` intermediates.
+
+**No cache-version bump.** The key format is unchanged; only the set of inputs feeding it widened. Keys
+move for exactly the projects that own such a file (and their dependents) and stay byte-identical
+everywhere else — no fleet-wide cold rebuild. A related but separate problem, the cached restore
+props baking in the producing agent's package root (#241), is not in this release; its fix needs a
+cache-version bump and is being paired with other artifact-format work so that bump is spent once.
+
+### `bom` says *why* a project was skipped
+
+On a solution run, a project with neither `packages.lock.json` nor a restored `project.assets.json` was
+listed as skipped with no reason unless you asked for `--json`. The default summary now prints the
+reason under each entry — including how to get a lock file (`RestorePackagesWithLockFile`, `dotnet
+restore`, or `--restore`) and, when `--restore` itself failed, the tail of MSBuild's output. The
+existing `  - {name}: {path}` line is unchanged; the reason is on new indented lines below it.
 
 ## 1.5.0 — 2026-09-09
 

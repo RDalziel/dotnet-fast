@@ -277,7 +277,19 @@ before the run.
 
 The input fingerprint covers the sources the project's **own language** compiles — `.cs` for a
 `.csproj`, `.fs`/`.fsi` for an `.fsproj` — plus the project file, its resolved import chain, and the
-lock file. For F# the fingerprint is additionally **order-sensitive**: F# compile order is part of the
+lock file.
+
+**Generated-looking sources count too.** An EF Core migration designer (`*.Designer.cs`), a
+`*ModelSnapshot.cs`, and any committed `.g.cs`/`.generated.cs` (protobuf, Refit, connected services)
+are ordinary compile items compiled into the assembly, so they are fingerprinted like any other
+source: a commit that changes **only** a migration snapshot is a cache **miss**, and the project
+rebuilds. The one exclusion is `obj/` build intermediates — those are written *by* the build, and
+folding them in would make a project's key depend on its own prior build state. (Earlier versions
+skipped these files as "generated", so a snapshot-only commit could hit the cache and run a stale
+assembly. The key-format version is unchanged by the fix, so nothing cold-rebuilds: a project that
+owns such a file simply rebuilds once, on its next change.)
+
+For F# the fingerprint is additionally **order-sensitive**: F# compile order is part of the
 language (a definition must precede its use, and an `.fsi` signature must precede its `.fs`), so
 reordering `<Compile Include>` items is a different compilation and gets a different key. C# compile
 order carries no meaning, so a C# project's key is unaffected by this and stays exactly what it was.

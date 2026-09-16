@@ -47,16 +47,18 @@ file's `.editorconfig`, and how per-rule, per-category and bulk severities are p
 ## The catalog
 
 The `--fix` column says whether `lint --fix` rewrites the finding. `report-only` rules are the ones
-whose rewrite cannot be proven sound from syntax alone (nullable-bool comparisons, expression-tree
-lambdas, and the like) — they are reported and left for you. Every autofix is build-verified against
-real open-source repositories before it ships.
+whose rewrite cannot be proven sound from syntax alone (nullable-bool comparisons, or anything that
+might be an expression tree — a lambda or LINQ query syntax) — they are reported and left for you.
+The same reasoning applies per occurrence: an `**autofix**` rule still declines to rewrite an
+individual finding it cannot prove safe, and reports it instead. Every autofix is build-verified
+against real open-source repositories before it ships.
 
 | ID | Rule | `--fix` |
 |---|---|---|
 | `DF0001` | Empty `catch { }` block swallows exceptions. | report-only |
 | `DF0002` | Empty `finally { }` block does nothing. | report-only |
 | `DF0003` | Redundant empty statement (stray `;`). | **autofix** (removes it) |
-| `DF0004` | `== null` / `!= null` — prefer `is null` / `is not null`. | **autofix** (rewrites; skipped inside lambdas — expression trees can't use `is`) |
+| `DF0004` | `== null` / `!= null` — prefer `is null` / `is not null`. | **autofix** (rewrites; skipped inside lambdas and LINQ query expressions — expression trees can't use `is`) |
 | `DF0005` | Redundant comparison to a boolean literal (`x == true`). | report-only (unsound to fix: `bool? == true` ≠ `bool?`) |
 | `DF0006` | Empty `if (...) { }` body. | report-only |
 | `DF0007` | Redundant boolean literals in a conditional (`c ? true : false`). | **autofix** (`c` / `!c`) |
