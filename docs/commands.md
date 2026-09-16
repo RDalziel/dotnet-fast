@@ -301,6 +301,59 @@ Both variable flags compose with any `--format` and never change the exit code �
 `--exit-zero-on-empty` so the step also succeeds on an empty set. See
 [Azure DevOps](azure-devops.md) for the full pipeline wiring.
 
+### How the graph is evaluated
+
+MSBuild evaluates every property in a project's whole import chain *before* it evaluates any item, so
+`affected` does the same. A conditioned `ProjectReference`/`PackageReference` in `Directory.Build.props`
+or a shared `.props` file is evaluated against the property values each consuming project ends up with
+— the common opt-in layout works:
+
+```xml
+<!-- Directory.Build.props -->
+<PropertyGroup><UseLegacy>false</UseLegacy></PropertyGroup>
+<ItemGroup Condition="'$(UseLegacy)' == 'true'">
+  <ProjectReference Include="$(MSBuildThisFileDirectory)src\Legacy\Legacy.csproj" />
+</ItemGroup>
+
+<!-- App.csproj -->
+<PropertyGroup><UseLegacy>true</UseLegacy></PropertyGroup>
+```
+
+A change to `Legacy` now reaches `App`. The same holds for a reference spec that only resolves once a
+later property is set (`Include="$(SharedRoot)Legacy\Legacy.csproj"`).
+
+`Import`, `PropertyGroup` and `Choose`/`When`/`Otherwise` deliberately stay on document order. For
+`Import` and `PropertyGroup` that is what keeps include-once guards
+(`Condition="'$(SomethingImported)' != 'true'"`) behaving as MSBuild does; for `Choose`/`When` it is
+MSBuild's own rule, measured against the SDK — the branch is selected during the property pass, so an
+`ItemGroup` inside `<Choose><When Condition="'$(UseLegacy)' == 'true'">` is *not* taken by a project
+that sets `UseLegacy` after the import, and MSBuild does not take it either.
+
+What the two passes guarantee is one-directional: the item pass only ever **adds** to what the
+document-order pass found, so no project that `affected` builds today stops being built, and anything
+the native evaluator cannot decide widens the set rather than narrowing it. That is a guarantee about
+this tool's own previous answer, not a claim of exact MSBuild equivalence in both directions — the
+affected set is still an approximation of MSBuild's, and these are the known cases where it can be
+*smaller*:
+
+- a conditioned `Remove`/`Exclude` in shared props keeps the document-order pass's verdict. If the
+  condition is true in document order and false against the final values (`<TrimGenerated>true</TrimGenerated>`
+  in the props, `false` in the `.csproj`), the removed file still does not map to that project, even though
+  MSBuild would compile it. The filters are deliberately *not* unioned: doing so would let the item pass
+  withdraw inputs, which is the one direction that can silently skip a build;
+- the broader first-slice limits: no MSBuild ProjectGraph, no target execution, no custom tasks, no
+  item transforms, and no transitive NuGet assets.
+
+The second evaluation only runs for a project whose items actually consumed a property that later
+changed value, so most projects still read their XML once. On a repository where nearly every project
+does trip it (MassTransit, ~130 projects), a full `affected` run measured 213 ms before and 263 ms after.
+
+Two consequences worth knowing about when you upgrade:
+
+- some repositories will see a slightly larger affected set, and therefore slightly more CI work;
+- `affected --tests-only` can now return a matrix for a project it previously skipped with exit code
+  `166`, because a gated test-framework `PackageReference` in shared props now classifies the project.
+
 ---
 
 ## `build`
@@ -352,8 +405,11 @@ See [build-cache.md](build-cache.md) for setup, CI examples, and the build-shard
 
 ## `test-plan`
 
-NUnit test sharding for CI agents. Tests are discovered from source and partitioned before test
-assemblies are built. **C# and F# test projects** (`.csproj`, `.fsproj`) are both discovered.
+Test sharding for CI agents. Tests are discovered from source and partitioned before test
+assemblies are built. **NUnit, xUnit and MSTest** are all discovered, in **C# and F# test projects**
+(`.csproj`, `.fsproj`) alike — see
+[test-sharding.md](test-sharding.md#xunit-and-mstest-test-projects) for the attributes read and the
+limits.
 
 ```bash
 dotnet-fast test-plan --shards 8 --format matrix .
@@ -428,7 +484,7 @@ shard can report green having tested nothing. `test-plan --exec --restore-from-c
 this since v0.306.0; see
 [test-sharding.md](test-sharding.md#end-to-end-optimized-pipeline) for the full failure mode and the fix.
 
-See [test-sharding.md](test-sharding.md) for CI examples and NUnit details.
+See [test-sharding.md](test-sharding.md) for CI examples and per-framework details.
 
 ---
 
@@ -458,6 +514,13 @@ dotnet-fast dead-code . --fix --write         # apply the removals
 
 By default the analysis is internal-only (public/protected types are live API roots), so a fresh run
 on any repo reports internal/private dead code with near-zero false positives and no configuration.
+
+**Progress.** A large solution takes a while, so the run narrates itself on **stderr**: each phase
+opens with its denominator (`scanning 52 project(s)...`), each scanned project gets a `[12/52]` line
+with its file count and timing (never one line per source file — above 50 projects the lines
+collapse to periodic ticks), and each phase closes with its elapsed time. stdout — the report,
+`--format json` — is byte-identical either way. Turn it off with `DOTNET_FAST_NO_PROGRESS=1` (also
+off under `-v quiet` and in agent mode).
 
 See [dead-code.md](dead-code.md) for the full DC-id catalog, the conservative-marking rules,
 framework indirection (`--handler-pattern`), and CI patterns.
@@ -544,6 +607,14 @@ dotnet-fast dead-dependencies . --verify           # opt-in: build each candidat
 | `--keep <ID>` | Ad-hoc known-keep for a package id or trailing-`*` glob (repeatable) — never report it as unused. |
 | `--fix` / `--fix --write` | Remove the removable findings — dry-run diff by default, `--write` applies. `DD0005`/`DD0008` are report-only. |
 | `--verify` | Opt-in SDK lane: copy the workspace, apply the removals, `dotnet build` the affected projects, and mark each finding verified iff the build stayed green. With `--fix --write --verify`, only verified removals are written. |
+
+**Progress.** Like `dead-code`, the run narrates itself on **stderr**: a `scanning N project(s)...`
+banner, a `[k/N]` line per scanned project with its reference count and timing, and a completion
+line per phase with its elapsed time. Under `--verify` it also reports each project as its build
+finishes and each bisect candidate as it is tried — the phase most likely to look like a hang.
+stdout stays byte-identical. Turn it off with `DOTNET_FAST_NO_PROGRESS=1` (also off under
+`-v quiet` and in agent mode); the two `--verify` banners this command has always printed are
+unchanged.
 
 See [dead-dependencies.md](dead-dependencies.md) for the full DD-id catalog, the tri-state detection
 gates, the fact tables, and the build-verify lane.

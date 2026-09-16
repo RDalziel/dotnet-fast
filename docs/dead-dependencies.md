@@ -306,6 +306,44 @@ Matching is by `(id, file, package/reference id)` — not by line number, since 
 declaration's line shifts on any unrelated edit to the same file. `--baseline` can't be combined with
 `--fix`.
 
+## Reading the progress output
+
+The run narrates itself on **stderr** while it works, so a long scan is never mistaken for a hang
+(stdout — the report, `--format json`, `--format sarif` — stays byte-for-byte identical either way):
+
+```
+dead-dependencies: discovering projects...
+dead-dependencies: discovering projects done in 22 ms (52 project(s))
+dead-dependencies: scanning 52 project(s)...
+dead-dependencies: [12/52] Payments.Api — 14 reference(s) in 90 ms
+dead-dependencies: scanning done in 3.2 s (694 reference(s))
+dead-dependencies: classifying done in 140 ms (27 finding(s))
+```
+
+`--verify` is the phase most likely to look like a hang — it builds projects one at a time with the
+real SDK — so it reports each build as it finishes and each bisect candidate as it is tried:
+
+```
+dead-dependencies --verify: building 7 project(s) with candidate removals applied in C:\...\deaddeps-verify-ab12
+dead-dependencies: [2/7] build Payments.Lib — ok in 3.4 s
+dead-dependencies: [5/7] build Payments.Api — FAILED in 6.1 s
+dead-dependencies: [5/7] candidate 1/4 Payments.Api — ok in 5.8 s
+dead-dependencies: [5/7] candidate 2/4 Payments.Api — FAILED in 5.9 s
+dead-dependencies: --verify build done in 51.2 s (7 project(s) built)
+```
+
+A `FAILED` line is not an error — it is the lane doing its job: the candidate that broke the build
+is bisected out and reported `verified: false`, exactly as the final report says. The two banner
+lines `--verify` and `--verify-tests` have always printed are unchanged by this and are not
+suppressible.
+
+Per-item lines are **per project, never per file**. Below 50 projects every scanned project gets a
+line; above that they collapse to periodic ticks (every 25 projects *and* at least ~2 s apart,
+whichever is sparser, with a backstop tick after ~10 s of silence), and a phase that never ticked
+prints no `[N/N]` line. Silence the progress lines with `DOTNET_FAST_NO_PROGRESS=1`, `-v quiet`, or
+agent mode — and note that losing them never costs you the run: a reader that closes stderr early
+(`2>&1 | head`) drops the lines, not the report or the exit code.
+
 ## Exit codes
 
 - **`0`** — clean report, or findings exist but `--fail-on-unused` wasn't passed (the default).

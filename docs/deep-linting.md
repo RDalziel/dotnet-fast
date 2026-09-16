@@ -25,6 +25,19 @@ severities a plain `dotnet build` enables. It does not replicate the stricter op
 (`AnalysisLevel`/`AnalysisMode` escalations such as `All`/`AllEnabledByDefault`); findings that
 only appear under a strict mode will not appear here.
 
+Analyzer **input files** — `BannedSymbols.txt`, `PublicAPI.Shipped.txt`/`PublicAPI.Unshipped.txt`,
+`stylecop.json` — and your project's **implicit/global usings** are picked up wherever you declare them,
+including in a shared `Directory.Build.props` or an imported `.targets` file, with conditions, `$(…)`
+properties and wildcards resolved the way a real build resolves them. If you keep those in a shared props
+file, `--deep` used to report nothing from the analyzers that depend on them; now it reports what
+`dotnet build` reports. Where a condition is too exotic to resolve, the old, more inclusive reading is kept
+rather than dropped — the resolution only ever adds inputs, so it cannot make a finding disappear.
+
+Still outside the boundary: `#if` regions (no preprocessor symbols are defined), types from a
+`ProjectReference` rather than a NuGet package, and the extra implicit usings the Web and Worker SDKs
+add — those namespaces come from framework packs the analyzer host does not load, so synthesising them
+would hide real findings rather than surface more.
+
 ## Why it's opt-in (not the default)
 
 `--deep` needs two things the default doesn't:

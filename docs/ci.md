@@ -273,8 +273,8 @@ dotnet-fast build --projects-file affected.proj .
 
 - **Skip the rebuild** — [build-cache.md](build-cache.md) covers the Azure Blob remote build cache
   (`build --plan --check` is a scriptable "is it fully cached?" probe).
-- **Parallelize the tests** — [test-sharding.md](test-sharding.md) covers NUnit sharding, planned
-  from source before any test assembly is built.
+- **Parallelize the tests** — [test-sharding.md](test-sharding.md) covers NUnit, xUnit and MSTest
+  sharding, planned from source before any test assembly is built.
 - **Gate code health** — [metrics.md](metrics.md) covers `metrics --fail-on-budget` and the baseline
   ratchet for a codebase that starts out over budget.
 

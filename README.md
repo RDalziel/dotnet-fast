@@ -7,7 +7,7 @@
 
 **Rust-powered .NET workspace tooling: a `dotnet format` alternative, a C# linter, a code-health
 scoreboard, and CI accelerators** — Git affected-project detection, an Azure Blob remote build cache,
-and NUnit test sharding for Azure DevOps and GitHub Actions. The native paths load no MSBuild and no
+and test sharding (NUnit, xUnit, MSTest) for Azure DevOps and GitHub Actions. The native paths load no MSBuild and no
 Roslyn, so they start in milliseconds and run common jobs 10–100× faster than the official tools
 ([how that is measured](https://github.com/RDalziel/dotnet-fast/blob/main/docs/benchmarks.md)); the
 documented exception is `lint --deep`, which runs your project's *real* Roslyn analyzers.

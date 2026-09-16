@@ -354,6 +354,38 @@ Pair it with `--report <dir>` to also write the JSON to disk, or scope a run to 
 projects with `--project <name>` / `--exclude-project <name>` (same shape as `affected`'s
 project-scoping flags).
 
+## Reading the progress output
+
+A whole-solution scan can take minutes, so the run narrates itself on **stderr** while it works
+(stdout stays reserved for the report, byte-for-byte):
+
+```
+dead-code: discovering projects done in 17 ms (52 project(s))
+dead-code: scanning 52 project(s)...
+dead-code: [12/52] Payments.Api — 143 file(s) in 210 ms
+dead-code: scanning done in 4.1 s (1204 file(s))
+dead-code: building the symbol table done in 90 ms (2310 type(s))
+dead-code: marking done in 120 ms (28 dead type(s), 4 test-only type(s), 10 dead member(s))
+```
+
+How to read it when a run feels slow:
+
+- **`scanning` is where the time goes** on a large repo — it is the phase that reads and parses
+  every source file. The `[k/N]` lines are **per project, never per file**: a project with 143 files
+  is one line. Below 50 projects every project gets a line; above that they collapse to periodic
+  ticks (every 25 projects *and* at least ~2 s apart, whichever is sparser, with a backstop tick
+  after ~10 s of silence), so a 400-project monorepo produces a handful of lines, not 400 — and a
+  phase that never ticked prints no `[N/N]` line, because its completion line already says it.
+- **The symbol table and the mark pass report start and finish only.** Each is a single pass over an
+  in-memory structure with no reportable sub-unit; if either one dominates your wall-clock, the
+  completion line says so.
+- Every phase ends with its elapsed time, so a CI log tells you afterwards which phase was slow.
+
+The lines are plain and uncolored — no spinner, no carriage-return redraw — so they read the same in
+a terminal and in a captured log. Silence them with `DOTNET_FAST_NO_PROGRESS=1`, `-v quiet`, or
+agent mode. If you capture `2>&1` around `--format json`, use one of those three (or redirect stdout
+separately) so the report stays clean.
+
 ## Exit codes
 
 - **`0`** — clean report, or findings exist but `--fail-on-dead` wasn't passed (the default).

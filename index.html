@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>dotnet-fast — fast .NET formatter, linter, build cache &amp; test sharding</title>
-<meta name="description" content="Fast .NET workspace tooling in Rust: a dotnet format alternative + C# linter, Git affected-project detection, an Azure Blob remote build cache, and NUnit test sharding for Azure DevOps & GitHub Actions CI. Starts instantly; 10–100× faster on common jobs." />
-<meta name="keywords" content="dotnet, dotnet format, dotnet format alternative, C# linter, .NET formatter, dotnet tool, Roslyn analyzers, affected projects, build cache, Azure Blob, NUnit test sharding, Azure DevOps, GitHub Actions, CI, code quality, Rust" />
+<meta name="description" content="Fast .NET workspace tooling in Rust: a dotnet format alternative + C# linter, Git affected-project detection, an Azure Blob remote build cache, and test sharding (NUnit, xUnit, MSTest) for Azure DevOps & GitHub Actions CI. Starts instantly; 10–100× faster on common jobs." />
+<meta name="keywords" content="dotnet, dotnet format, dotnet format alternative, C# linter, .NET formatter, dotnet tool, Roslyn analyzers, affected projects, build cache, Azure Blob, NUnit test sharding, xUnit test sharding, MSTest test sharding, Azure DevOps, GitHub Actions, CI, code quality, Rust" />
 <link rel="canonical" href="https://dotnet-fast.wee-app.com/" />
 <meta name="robots" content="index,follow" />
 <meta name="theme-color" content="#0b0e14" />
@@ -13,11 +13,11 @@
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="dotnet-fast" />
 <meta property="og:title" content="dotnet-fast — fast .NET formatter, linter, build cache &amp; test sharding" />
-<meta property="og:description" content="Rust-powered, instant-start .NET tooling: dotnet format alternative + C# linter, affected-project detection, Azure Blob build cache, and NUnit test sharding for CI." />
+<meta property="og:description" content="Rust-powered, instant-start .NET tooling: dotnet format alternative + C# linter, affected-project detection, Azure Blob build cache, and test sharding (NUnit, xUnit, MSTest) for CI." />
 <meta property="og:url" content="https://dotnet-fast.wee-app.com/" />
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="dotnet-fast — fast .NET tooling" />
-<meta name="twitter:description" content="Format, lint, affected detection, build cache & NUnit test sharding — 10–100× faster, instant start." />
+<meta name="twitter:description" content="Format, lint, affected detection, build cache & test sharding (NUnit/xUnit/MSTest) — 10–100× faster, instant start." />
 <!-- Structured data for rich results -->
 <script type="application/ld+json">
 {
@@ -26,7 +26,7 @@
   "name": "dotnet-fast",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows",
-  "description": "Fast .NET workspace tooling in Rust: a dotnet format alternative + C# linter, Git affected-project detection, an Azure Blob remote build cache, and NUnit test sharding for CI.",
+  "description": "Fast .NET workspace tooling in Rust: a dotnet format alternative + C# linter, Git affected-project detection, an Azure Blob remote build cache, and test sharding (NUnit, xUnit, MSTest) for CI.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "license": "https://github.com/RDalziel/dotnet-fast/blob/main/LICENSE.txt",
   "downloadUrl": "https://www.nuget.org/packages/RDLL.dotnet-fast",
@@ -113,7 +113,7 @@
     <h1>Fast .NET tooling —<br><span class="grad">format, lint, build cache &amp; test sharding</span></h1>
     <p class="lede">A Rust-powered, instant-start alternative to <code>dotnet format</code> plus a C#
       linter — and CI accelerators: Git affected-project detection, an Azure&nbsp;Blob remote build
-      cache, and NUnit test sharding for Azure&nbsp;DevOps and GitHub&nbsp;Actions. The native paths
+      cache, and test sharding (NUnit, xUnit, MSTest) for Azure&nbsp;DevOps and GitHub&nbsp;Actions. The native paths
       load no MSBuild or Roslyn, so they start in milliseconds and run common jobs 10–100× faster.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Get started</a>
@@ -150,7 +150,7 @@ dotnet-fast test-plan --shards 8 --format matrix .</pre>
       <div class="card"><h3><code>format</code></h3><p>Apply whitespace/style formatting on a <code>dotnet format</code>-compatible path — no MSBuild load, starts in milliseconds.</p></div>
       <div class="card"><h3><code>affected</code></h3><p>List the projects a Git change set affects (plus reverse-dependents) for scoped CI. Shallow explicit ranges deepen and retry; Azure batch builds can use the last successful build as their base.</p></div>
       <div class="card"><h3><code>build</code> <span class="tag preview">preview</span></h3><p>Remote build cache backed by Azure&nbsp;Blob Storage: restore cached build outputs on a clean checkout instead of rebuilding; build misses and upload trusted artifacts.</p></div>
-      <div class="card"><h3><code>test-plan</code> <span class="tag preview">preview</span></h3><p>NUnit test sharding for parallel CI agents — discovered from source <em>before</em> test assemblies are built, balanced with project affinity, emitted as an ADO/Actions matrix.</p></div>
+      <div class="card"><h3><code>test-plan</code> <span class="tag preview">preview</span></h3><p>NUnit, xUnit and MSTest sharding for parallel CI agents — discovered from source <em>before</em> test assemblies are built, balanced with project affinity, emitted as an ADO/Actions matrix.</p></div>
       <div class="card"><h3><code>doctor</code></h3><p>Fast, build-free scan for common workspace problems (duplicate references, CPM conflicts, inconsistent lock usage, and more).</p></div>
       <div class="card"><h3><code>bom</code></h3><p>Software Bill of Materials without a build: direct + transitive packages, purls, hashes, and the dependency graph as CycloneDX (JSON/XML, 1.4–1.6) or SPDX (2.2/2.3) — from lock files or restored assets, with <code>--restore</code> for a fresh checkout.</p></div>
       <div class="card"><h3><code>dead-code</code></h3><p>Solution-wide dead-code detection: types and members nothing in production reaches, plus a distinct test-only category. Conservative — everything reported is safe to delete.</p></div>
@@ -180,7 +180,7 @@ dotnet-fast test-plan --shards 8 --format matrix .</pre>
       <li><strong>Gate the pull request</strong> — <code>lint .</code> exits <code>1</code> on any finding, scoped to the lines the PR actually changed so old debt in a touched file does not fail the build. Add <code>--sarif</code> and the findings land in GitHub code scanning. <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ci.md">Copy-paste CI wiring</a>.</li>
       <li><strong>Scope the build</strong> — <code>affected --ci</code> tells the pipeline exactly which projects changed; Azure batch builds can add <code>--ci-base last-successful-build</code>.</li>
       <li><strong>Skip the rebuild</strong> — <code>build</code> restores prior outputs from an Azure&nbsp;Blob cache on a clean checkout.</li>
-      <li><strong>Parallelize tests</strong> — <code>test-plan</code> shards NUnit suites across agents (Azure&nbsp;DevOps <code>parallel</code>/<code>matrix</code>, GitHub Actions) without building first.</li>
+      <li><strong>Parallelize tests</strong> — <code>test-plan</code> shards NUnit, xUnit and MSTest suites across agents (Azure&nbsp;DevOps <code>parallel</code>/<code>matrix</code>, GitHub Actions) without building first.</li>
     </ul>
     <p class="muted">Guides: <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ci.md">CI wiring</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/build-cache.md">build cache</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/test-sharding.md">test sharding</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-code.md">dead code</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/dead-dependencies.md">dead dependencies</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/metrics.md">metrics</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/editorconfig.md">the .editorconfig guide</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/bom.md">bill of materials</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/ported-analyzers.md">ported analyzers</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/benchmarks.md">benchmark methodology</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/security.md">security &amp; supply chain</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/releasing.md">how releases are made</a> · <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md">full command reference</a>.</p>
   </section>

@@ -180,7 +180,14 @@ appear here.
 
 ## CI accelerators
 
-- **Test sharding (`test-plan`)** — **NUnit only**. xUnit and MSTest support are planned follow-ups.
+- **Test sharding (`test-plan`)** — **NUnit, xUnit and MSTest**, in C# and F#, with no flag to set. The
+  vocabulary is read by attribute NAME, so a derived attribute type (`[SkippableFact]`, your own
+  `FactAttribute`/`TheoryAttribute`/`TestMethodAttribute` subclass) is not recognised: a project where
+  EVERY test class uses one is reported with `no-fixtures`, while a project that MIXES them is planned
+  from its recognised classes and the rest are absent from the plan without a warning
+  ([detail](test-sharding.md#xunit-and-mstest-test-projects)). The zero-match-filter behaviour the shard
+  audit relies on was measured on the **VSTest** adapters; the Microsoft.Testing.Platform runners
+  (`EnableMSTestRunner`, xunit.v3) are not covered.
 - **Bill of materials (`bom`)** — **CycloneDX** is the default format (1.4/1.5/1.6, JSON or XML); SPDX
   2.2/2.3 JSON is also supported.
 - **Build cache (`build`)** — backed by **Azure Blob Storage** (SAS or Entra/managed-identity auth). No
@@ -198,7 +205,7 @@ appear here.
   results.
 - **F#** — supported across the board, so a mixed C#/F# solution is handled rather than half-skipped.
   `affected`, `build`, `doctor` and `bom` work from the project graph and treat `.fsproj` like any
-  other project. `test-plan` discovers NUnit fixtures from F# sources, `metrics` scores F# against the
+  other project. `test-plan` discovers NUnit, xUnit and MSTest fixtures from F# sources, `metrics` scores F# against the
   same budgets, and `dead-dependencies` reads `open` declarations the way it reads `using` directives.
 
   **F# formatting is done by driving [Fantomas](https://fsprojects.github.io/fantomas/), not by a

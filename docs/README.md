@@ -38,7 +38,7 @@ specific flag? [commands.md](commands.md) is the full reference for every comman
 | Page | What it covers |
 |---|---|
 | [build-cache.md](build-cache.md) | The Azure Blob remote build cache: restore prior outputs instead of rebuilding. |
-| [test-sharding.md](test-sharding.md) | Splitting an NUnit suite across parallel agents, planned from source before anything is built. |
+| [test-sharding.md](test-sharding.md) | Splitting an NUnit, xUnit or MSTest suite across parallel agents, planned from source before anything is built. |
 | [azure-devops.md](azure-devops.md) | The Azure Pipelines specifics: batched-trigger baselines, cache RBAC, `ado-matrix` sharding. |
 
 ## What you can rely on

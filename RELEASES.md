@@ -2,9 +2,109 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.5.1`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.6.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.6.0 — 2026-09-16
+
+Four changes. Three of them make the tool see more of your repository — more test frameworks, more of
+MSBuild, more of what your analyzers were configured to read — so a few counts move, always in the
+direction of doing more work rather than less. Each is named below so none reads as a regression.
+
+### `test-plan` now shards xUnit and MSTest, not only NUnit
+
+`test-plan` discovers **xUnit** (`[Fact]`, `[Theory]` with `[InlineData]`/`[MemberData]`/`[ClassData]`)
+and **MSTest** (`[TestMethod]`, `[DataTestMethod]` with `[DataRow]`/`[DynamicData]`) fixtures alongside
+NUnit, in C# and F# alike. Nothing to configure and no new flag: those projects previously contributed
+zero fixtures and were reported as `no-fixtures`, so none of their tests ran in any shard.
+
+- **A pure-NUnit repository gets the same plan it always did** — byte-identical.
+- A repository that mixes frameworks now sees its xUnit/MSTest tests enter the partition, so shard
+  membership and a project's `--filter` can change shape. Strictly more tests run, never fewer.
+- `--fail-on-skipped-projects` stops exiting `167` for an xUnit/MSTest repository that used to trip
+  it, because those projects are now planned. A project with one unparsable source now reports
+  `some-sources-unparsed` where it used to report `no-fixtures` — no code was renamed, but the code a
+  given project reports can change.
+- The property the shard audit relies on — a `--filter` that matches nothing exits 0 and writes a
+  zero-count `.trx` — is now **measured per adapter** (NUnit3TestAdapter 5.2.0, xunit.runner.visualstudio
+  2.8.2, MSTest.TestAdapter 3.6.4) and pinned by a live test, as is the filter-escaping grammar. The
+  VSTest lane is what is covered; Microsoft.Testing.Platform runners (`EnableMSTestRunner`, xunit.v3)
+  define their own "nothing ran" exit code and are not.
+
+Two limits, stated precisely. Attributes are matched by **name**, so a derived attribute
+(`[SkippableFact]`, your own `FactAttribute` subclass) is not recognised: a project where *every* test
+class uses one is reported `no-fixtures` with a warning; a project that *mixes* recognised and derived
+attributes is planned from the recognised classes and the others are absent **without a warning** —
+give such a project its own `dotnet test` job. Dynamic data sources score a flat weight, which costs
+balance but never coverage, and `--use-cached-timings` replaces the estimate on the second run. One
+oddity worth knowing because it looks like a sharding bug and is not: `MSTest.TestAdapter` does not run
+an F# test class whose name is double-backtick-quoted, under a plain `dotnet test` exactly as under a
+sharded one.
+
+### `lint --deep` reads the analyzer inputs your build reads (#138, #139)
+
+`lint --deep` now evaluates a project's `AdditionalFiles` and its implicit and explicit global usings
+through the full MSBuild import chain — `Directory.Build.props`, `Directory.Build.targets`, any
+`<Import>` — with conditions, `$()` expansion, globs and multi-target-framework union. Before, only
+items written literally in the project's own `.csproj` were seen, and a globbed spec such as
+`PublicAPI.*.txt` was skipped outright. A repository keeping `BannedSymbols.txt`, `PublicAPI.*.txt`,
+`stylecop.json` or `<ImplicitUsings>` in a shared props file was getting **zero** findings from the
+analyzers that depend on them, and unbound symbols were suppressing semantic findings.
+
+**A `--deep` gate on such a repository can go green → red on its first run after upgrading.** Those
+findings are what `dotnet build` already reports. The resolution is strictly additive — it is unioned
+with what the Roslyn sidecar already worked out on its own, so no repository loses a finding it had,
+including where a condition is too exotic for the evaluator and it falls back to the old read.
+
+**One-time `--deep-cache` invalidation.** The cache namespace moves so every existing blob is retired
+and the first run after upgrade re-analyzes each project. The key now folds in the analyzer input files'
+*content*: an edit to `BannedSymbols.txt` changed what the analyzers reported while leaving the old key
+unmoved, and the warm server could serve a stale result after such an edit. Both are closed.
+
+Not claimed, and stated in the docs: `#if` regions (no preprocessor symbols are defined), types from
+`ProjectReference`s, the extra Web/Worker SDK implicit usings, and globbed `AdditionalFiles` inside
+`bin`/`obj`. Those are #272, #273 and #274.
+
+### `affected` evaluates conditioned references the way MSBuild does (#262)
+
+Conditioned project and package references in shared props are now evaluated against the **final**
+property values each project ends up with — MSBuild's pass order — so an opt-in shared-source or
+test-utility reference gated on a property the `.csproj` sets later is no longer missed. The reported
+set is the union of the previous document-order pass and the new item pass, keeping the old pass's
+`Remove`/`Exclude` filters, so an ambiguous evaluation can only widen the set, never narrow it.
+
+- Some repositories will see a slightly larger affected set, and slightly more CI work. That is the
+  safe direction: a project previously skipped despite a change reaching it is now built.
+- `affected --tests-only` can now return a matrix where it previously exited `166`, because a gated
+  test-framework `PackageReference` in shared props now classifies the project. The exit code's meaning
+  is unchanged; a pipeline that branches on `166` will behave differently on such a repository.
+- Build-cache keys change once for exactly the projects whose evaluation changed — a one-time cold
+  miss, never a stale hit. No cache-version bump, nothing to do.
+- Cost: on a repository where nearly every project trips the second evaluation, 213 ms → 263 ms
+  (MassTransit, ~130 projects).
+
+`Choose`/`When` was measured against the pinned SDK and matches MSBuild — branch selection happens in
+the property pass — which corrects an older line in the docs that called it a limitation.
+
+### `dead-code` and `dead-dependencies` show progress on long runs (#215)
+
+Both commands now stream phase-by-phase progress to **stderr**: discovery, scanning, and for
+`dead-code` the symbol table and the mark pass. Each phase names its denominator, each scanned project
+gets a `[k/N]` line with its file or reference count and timing, and each phase closes with its elapsed
+time. Under `--verify`/`--verify-tests` there is one line per project built and one per bisect
+candidate.
+
+Per-item lines are per **project**, never per source file. At or below 50 projects every project gets a
+line; above that they collapse to periodic ticks — every 25 projects and at least ~2 s apart — with a
+~10 s backstop so silence is bounded. The lines are plain and uncolored; no spinner, no carriage-return
+redraw.
+
+**stdout is unchanged.** The report, `--format json` and `--format sarif` are byte-identical, so
+pipelines are unaffected. Progress can never change an exit code: the lines are written best-effort, so
+a reader that closes stderr early (`| head`, `| grep -m1`, a truncated CI log) loses the lines and
+nothing else. Progress is silent in agent mode, under `-v quiet`, and with the new
+`DOTNET_FAST_NO_PROGRESS=1` opt-out — the same three switches as the version banner.
 
 ## 1.5.1 — 2026-09-16
 

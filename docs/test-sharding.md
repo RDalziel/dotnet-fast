@@ -1,11 +1,12 @@
 # Test sharding
 
-`dotnet-fast test-plan` splits NUnit test projects across CI agents without building the assemblies
+`dotnet-fast test-plan` splits test projects across CI agents without building the assemblies
 first. It discovers fixtures from source, balances them across shards, and emits a GitHub Actions
 matrix, an Azure DevOps matrix, JSON, or runnable `dotnet test` commands.
 
-v1 is NUnit-only. xUnit and MSTest support are planned follow-ups. Both **C#** and **F#** test
-projects are discovered; a test project in any other language is reported rather than skipped (see
+**NUnit, xUnit and MSTest** are all discovered, in both **C#** and **F#**, with no flag to set — see
+[xUnit and MSTest test projects](#xunit-and-mstest-test-projects) for the attributes read and the
+limits. A test project in any other language is reported rather than skipped (see
 [Nothing vanishes from a plan](#nothing-vanishes-from-a-plan)).
 
 The full flag reference is in [commands.md](commands.md#test-plan). This page is how to use it.
@@ -63,6 +64,14 @@ legitimately matches nothing still exits 0 and still **writes** its `.trx`, with
 executed="0"`. So a `.trx` present with zero tests is honest and passes silently; a `.trx` that is
 **absent** can only mean no test host ever started, and the run proved nothing. The most common cause
 is the packages-folder trap described under `--restore-from-cache` below.
+
+That is a measurement, re-taken for every adapter this tool plans for rather than assumed:
+`NUnit3TestAdapter` 5.2.0, `xunit.runner.visualstudio` 2.8.2 and `MSTest.TestAdapter` 3.6.4, each with
+`Microsoft.NET.Test.Sdk` 18.0.0 on .NET SDK 10.0.303, all exit 0 and write a zero-counter `.trx` for a
+filter that selects nothing. A gated test asserts it per adapter, so a package or SDK bump that changes
+the behaviour fails there rather than in your pipeline. Note it is the **VSTest** lane that was
+measured — the Microsoft.Testing.Platform runners (`EnableMSTestRunner`, xunit.v3) define their own
+"zero tests ran" exit code and are not covered by this claim.
 
 The failure names each project, the exact path expected, why exit 0 was misleading, and the ranked
 causes. `--report` gains an appended `testResults` array (`project`, `trx`, `written`, `tests`).
@@ -411,9 +420,54 @@ the table endpoint is derived from the cache URL's host.)
 Use `--verify` when rolling the plan out to a new repository. It runs the baseline tests and shard
 filters, then checks that the shard union matches the baseline list.
 
+## xUnit and MSTest test projects
+
+xUnit and MSTest projects shard alongside NUnit ones, with no flag to set and nothing to configure.
+The attributes read, and how each contributes to a fixture's estimated weight:
+
+| Framework | A class becomes a fixture when… | Test methods | Cases counted |
+|---|---|---|---|
+| NUnit | it carries `[TestFixture]`, or has a `[Test]`/`[TestCase]` method | `[Test]`, `[TestCase]` | each `[TestCase]` is one case, added to `[Test]` |
+| xUnit | it has a `[Fact]` or `[Theory]` method (xUnit has no class-level attribute) | `[Fact]`, `[Theory]` | one per `[InlineData]` row |
+| MSTest | it has a `[TestMethod]`/`[DataTestMethod]` method | `[TestMethod]`, `[DataTestMethod]` | one per `[DataRow]` row |
+
+Everything else works the same across the three: nested classes use the runtime `+` name
+(`Ns.Outer+Inner`), filters are trailing-dot anchored so `Alpha` never picks up `AlphaExtra`, tests
+inherited from a base class in the same solution are attributed to the derived class, and a whole
+project runs unfiltered when it fits one shard. These forms were verified against the real
+`dotnet test` adapters, not inferred.
+
+MSTest's `[TestClass]` is deliberately **not** treated as a fixture marker on its own. MSTest requires
+it on the class holding `[AssemblyInitialize]`/`[ClassInitialize]`, and such a class runs no tests —
+counting it would put a filter that can only match nothing on one of your shards.
+
+Two honest limits:
+
+- **Weight is an estimate for dynamic data.** `[MemberData]`, `[ClassData]` and `[DynamicData]` (like
+  NUnit's `[TestCaseSource]`) have a cardinality only the runtime knows, so they score a flat
+  heuristic. Sharding is by fixture, so a wrong weight costs balance, never coverage — and
+  [`--use-cached-timings`](#cached-timings--zero-yaml---use-cached-timings----record-timings)
+  replaces the estimate with measured durations on the second run.
+- **Derived attribute types are not recognised.** `[SkippableFact]`, or your own subclass of
+  `FactAttribute`/`TheoryAttribute`/`TestMethodAttribute`, is read by name, so a class whose only test
+  methods carry one is not discovered. What that costs depends on the project:
+  - If **every** test class in the project uses derived attributes, the project contributes no
+    fixtures and is **reported** — `skippedProjects` with `no-fixtures`, plus a stderr warning (see
+    [Nothing vanishes from a plan](#nothing-vanishes-from-a-plan)).
+  - If the project **mixes** recognised and derived attributes, it is planned from the classes that
+    were recognised, and the derived-attribute ones are simply **absent from the plan — with no
+    warning**. Their tests run in no shard. If you use a derived attribute, either give that project
+    its own `dotnet test` job or run it whole (it is not reported for you).
+
+Mixing frameworks in one repository is fine, and so is mixing them in one project. A repository that
+was entirely NUnit before this shipped produces the same plan it always did; a repository that mixes
+frameworks sees its xUnit/MSTest tests enter the plan, which moves shard membership around — strictly
+more tests run, never fewer.
+
 ## F# test projects
 
-F# NUnit projects shard alongside C# ones. The shapes NUnit discovers are all recognised:
+F# projects shard alongside C# ones, in all three frameworks. The shapes NUnit discovers are all
+recognised, and `[<Fact>]`/`[<Theory>]` and `[<TestMethod>]` are read in exactly the same places:
 
 | F# source | Fixture in the plan |
 |---|---|
@@ -437,11 +491,23 @@ The F# grammar is an approximation — F#'s offside rule cannot be expressed con
 small share of real-world files defeat it. Such a file is never quietly walked for a partial result:
 the project is reported (see below) so you can see which tests are missing from the plan.
 
+One thing to know if you pair **F# with MSTest**, because it looks like a sharding bug and is not:
+`MSTest.TestAdapter` does not run a test class whose F# name is double-backtick-quoted (`` type
+``Parses(badly)``() ``, even `` type ``Dash-Named``() ``). It lists the test and then reports it
+`NotExecuted` — *"Test method … was not found"* — under a plain `dotnet test` exactly as under a
+sharded one, exit 0 either way. The plan names those fixtures correctly; the adapter declines to run
+them. Plain (unquoted) F# type names are unaffected, and xUnit and NUnit run quoted names fine.
+
 ## Nothing vanishes from a plan
 
 A project that references a test framework but contributes no fixtures is **reported**, never
 silently dropped. Before this, such a project simply disappeared: the plan was smaller, the exit
 code was still `0`, and a CI shard step ran nothing and passed — a false green.
+
+That guarantee is at **project** granularity, and there is one gap inside it worth stating plainly:
+in a project that IS planned, a test class whose attributes the vocabulary does not recognise — a
+[derived attribute type](#xunit-and-mstest-test-projects) — is absent from the plan with no warning.
+Only a project contributing *zero* fixtures is reported.
 
 Every such project is named on stderr with the reason and the consequence, and listed under
 `skippedProjects` in `--format json` and in the `--report <DIR>` artifact:
@@ -458,7 +524,7 @@ not parsed for test discovery (.vbproj) — none of its tests will run in any sh
 | `no-source-files` | The project declares no sources at all. |
 | `no-parsable-sources` | Sources exist, but none of them parsed. |
 | `some-sources-unparsed` | The project **is** in the plan, but tests in the unparsed files are not. |
-| `no-fixtures` | Everything parsed and no NUnit fixture was declared (a scaffolded test project). |
+| `no-fixtures` | Everything parsed and no test fixture was declared in any supported framework's vocabulary — a scaffolded test project, or one whose tests only carry a derived attribute type (see [xUnit and MSTest test projects](#xunit-and-mstest-test-projects)). |
 
 Warning is the default so an upgrade cannot break a repo with a legitimately empty test project. Add
 `--fail-on-skipped-projects` to exit `167` instead — the setting to reach for once you have cleaned
