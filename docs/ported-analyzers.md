@@ -2,7 +2,7 @@
 
 `dotnet-fast` re-implements popular Roslyn analyzers as **native, Roslyn-free** rules that run in the default `lint` path — no `--deep`, no .NET SDK, no restore. Each port is verified at **exact parity** against the real analyzer (same `(file, line, column)` findings) and runs orders of magnitude faster.
 
-**679 analyzers ported** (90 with an autofix), across SonarAnalyzer, Microsoft.CodeAnalysis.NetAnalyzers, StyleCop, Roslynator, Meziantou, Microsoft.VisualStudio.Threading.Analyzers, AsyncFixer, Microsoft.EntityFrameworkCore.Analyzers, CSharpGuidelinesAnalyzer, IDisposableAnalyzers, NUnit.Analyzers, Philips.CodeAnalysis.MaintainabilityAnalyzers, SecurityCodeScan, Text.Analyzers, and Gu.Analyzers.
+**679 analyzers ported** (89 with an autofix), across SonarAnalyzer, Microsoft.CodeAnalysis.NetAnalyzers, StyleCop, Roslynator, Meziantou, Microsoft.VisualStudio.Threading.Analyzers, AsyncFixer, Microsoft.EntityFrameworkCore.Analyzers, CSharpGuidelinesAnalyzer, IDisposableAnalyzers, NUnit.Analyzers, Philips.CodeAnalysis.MaintainabilityAnalyzers, SecurityCodeScan, Text.Analyzers, and Gu.Analyzers.
 
 The ports are a **bundled superset, active by default** — they run regardless of which analyzer packages your project actually references, so `lint` can report rule IDs a plain `dotnet build` or `dotnet format` would never surface for your project. Pass `--only-active-analyzers` to restrict them to the analyzers your project references.
 
@@ -367,7 +367,7 @@ It disables every ported analyzer, then re-enables the `Correctness`, `Concurren
 | `RCS1075` | Roslynator.Analyzers RCS1075 | Correctness | report-only | Avoid empty catch clauses that catch System.Exception. |
 | `RCS1077` | Roslynator.Analyzers RCS1077 | Performance | report-only | Optimize LINQ method call. |
 | `RCS1080` | Roslynator.Analyzers RCS1080 | Performance | report-only | Array '.Any()' should use the Length property. |
-| `RCS1084` | Roslynator.Analyzers RCS1084 | Style | yes | Use coalesce expression instead of conditional expression. |
+| `RCS1084` | Roslynator.Analyzers RCS1084 | Style | report-only | Use coalesce expression instead of conditional expression. |
 | `RCS1085` | Roslynator.Analyzers RCS1085 | Redundancy | report-only | Use auto-implemented property. |
 | `RCS1089` | Roslynator.Analyzers RCS1089 | Redundancy | report-only | Use ++/-- operator instead of assignment. |
 | `RCS1097` | Roslynator.Analyzers RCS1097 | Redundancy | yes | Redundant 'ToString' call on a string. |
@@ -2626,9 +2626,9 @@ A `Where(predicate).Count()` chain (or `.Any()`, `.First()`, …) can fold the p
 
 ### `RCS1084` — Use coalesce expression instead of conditional expression.
 
-*Port of Roslynator.Analyzers RCS1084 · Style · has an autofix* · [upstream docs](https://josefpihrt.github.io/docs/roslynator/analyzers/RCS1084)
+*Port of Roslynator.Analyzers RCS1084 · Style · report-only* · [upstream docs](https://josefpihrt.github.io/docs/roslynator/analyzers/RCS1084)
 
-A ternary that yields the tested value when non-null and a fallback otherwise is exactly `??`. Fires on `x != null ? x : y` and `x == null ? y : x`, anchored at the conditional expression; the fix is `x ?? y`. Native port of Roslynator.Analyzers RCS1084.
+A ternary that yields the tested value when non-null and a fallback otherwise is exactly `??` when the two operands share a common type. Fires on `x != null ? x : y` and `x == null ? y : x`, anchored at the conditional expression. Report-only: `??` requires that shared type while a ternary does not, and a bare source line carries no type information to tell a safe rewrite from an unsafe one (e.g. `text != null ? text : DBNull.Value` compiles but `text ?? DBNull.Value` is CS0019). Native port of Roslynator.Analyzers RCS1084.
 
 ### `RCS1085` — Use auto-implemented property.
 
@@ -3450,7 +3450,7 @@ A `set`/`init` accessor — or an `add`/`remove` event accessor — that never r
 
 *Port of SonarAnalyzer.CSharp S3240 · Style · report-only* · [upstream docs](https://rules.sonarsource.com/csharp/RSPEC-3240/)
 
-Two shapes collapse to a simpler conditional: a null-check ternary (`x != null ? x : y`) becomes `x ?? y` (anchored at the conditional expression), and an `if (c) … else …` whose branches each reduce to a single `return <expr>;` or an assignment to the same target becomes one ternary (anchored at the `if`; an `else if` chain does not fire). Native port of SonarAnalyzer.CSharp S3240 — report-only (the `??` fix is carried by the Roslynator twin RCS1084; the `?:` collapse rewrites multiple statements).
+Two shapes collapse to a simpler conditional: a null-check ternary (`x != null ? x : y`) becomes `x ?? y` (anchored at the conditional expression), and an `if (c) … else …` whose branches each reduce to a single `return <expr>;` or an assignment to the same target becomes one ternary (anchored at the `if`; an `else if` chain does not fire). Native port of SonarAnalyzer.CSharp S3240 — report-only (the `??` shape has no provable-safe fix without type information, same as its Roslynator twin RCS1084; the `?:` collapse rewrites multiple statements).
 
 ### `S3247` — Use the result of the 'is' check instead of casting again.
 

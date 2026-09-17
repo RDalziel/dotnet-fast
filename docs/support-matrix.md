@@ -53,7 +53,7 @@ open-source repositories; the floors a release must clear before shipping are:
 
 | Repository | Files | Parity floor |
 |---|---|---|
-| Newtonsoft.Json | 945 | 944/945 — 99.89% |
+| Newtonsoft.Json | 945 | 945/945 — 100% |
 | Polly | 797 | 796/797 — 99.87% |
 | Dapper | 157 | 156/157 — 99.36% |
 | AutoMapper | 512 | 508/512 — 99.22% |
@@ -71,11 +71,12 @@ divergence is a multi-space argument run in `src/Snippets/Docs/ResiliencePipelin
 repository's floor was affected — their targets were already correct.
 
 The other four floors were re-measured on 2026-07-17 with the byte-exact, BOM-aware parity comparer (binary
-`e9c1117a`). Newtonsoft.Json's floor is one file below a round 100% because that comparer now compares
-raw bytes rather than culture-decoded text: it surfaces a single pre-existing divergence in
-`JContainer.cs` where the source indents a doc-comment continuation with non-breaking spaces (U+00A0)
-that `dotnet format` preserves and `dotnet-fast` normalizes to ASCII spaces — a content difference the
-old text comparer silently equated. It is unrelated to the BOM/`charset` policy.
+`e9c1117a`). Newtonsoft.Json's floor sat one file below a round 100% from then until 2026-09-16 because
+that comparer compares raw bytes rather than culture-decoded text: it surfaced a single pre-existing
+divergence in `JContainer.cs` where the source indents a declaration with non-breaking spaces (U+00A0)
+that `dotnet format` preserves and `dotnet-fast` normalized to ASCII spaces — a content difference the
+old text comparer silently equated. It was unrelated to the BOM/`charset` policy, and it is **fixed**:
+see the 2026-09-16 sweep below.
 
 ### Latest coverage-checked sweep (2026-08-03)
 
@@ -113,7 +114,8 @@ coverage probe: **153/154 = 99.35%** over files both tools formatted, zero one-s
 156/157 = 99.36%. The single remaining divergence is the indentation of a `= new(…)` continuation line
 in `Dapper\CompiledRegex.cs`.
 
-**Newtonsoft.Json now fails the coverage check, and its parity figure is unchanged at 99.89%.** The
+**On this sweep Newtonsoft.Json failed the coverage check, with its parity figure unchanged at 99.89%
+(superseded by the 2026-09-16 sweep below, where it passes at 100%).** The
 one-sided file is `Src\Newtonsoft.Json.Tests\Issues\Issue3080.cs`. This is the *already-documented*
 final-line edge case, not a new divergence: that file's last line is an unterminated `#endif` (no
 trailing newline), and `dotnet format` responds to an unterminated final directive line by trimming the
@@ -139,6 +141,58 @@ leading UTF-8 BOM and `charset = utf-8-bom` adds one (oracle-verified against `d
 unset `charset` preserves the file's existing BOM. `latin1`/`utf-16be`/`utf-16le` remain out of scope
 — those imply a full content transcode, which is never performed (content is read and written as
 UTF-8 bytes and never re-encoded).
+
+### Latest coverage-checked sweep (2026-09-16)
+
+Re-measured after the two whitespace fixes described below, same harness, same corpus pins, oracle
+`dotnet format whitespace --no-restore` on SDK 10.0.303:
+
+| Repository | Files both tools formatted | Parity | Run |
+|---|---|---|---|
+| Newtonsoft.Json | 942 / 942 | **100%** (was 99.89%) | **passes the coverage check** (0 one-sided; was 1) |
+| Serilog | 216 / 216 | 100% | pass |
+| AutoMapper | 512 / 512 | 100% | pass |
+| Polly | 775 / 776 | 99.87% | pass |
+| Dapper | 153 / 154 | 99.35% | pass |
+
+**Newtonsoft.Json is at 100% and clears the coverage check for the first time.** Its only divergence —
+the `JContainer.cs` non-breaking-space indent — is closed by the second fix below, and the one-sided
+`Issue3080.cs` finding from the 2026-08-03 sweep no longer reproduces. Whole-tree arithmetic agrees at
+945/945. The four other repositories are byte-for-byte unchanged from their published figures, which is
+the no-regression check for the `case (` fix: it moves output in real repositories, and it moved none of
+theirs.
+
+Polly's and Dapper's single divergences are the same two already documented above (a multi-space
+argument run in `ResiliencePipelineRegistry.cs`; a `= new(…)` continuation indent in
+`CompiledRegex.cs`). Neither is affected by this work.
+
+### Two whitespace rules fixed against the oracle (1.6.x)
+
+Both are byte-level formatter behaviour — no flag, default, output field or exit code changed.
+
+**A `case` label keeps its space before `(`.** `case ("XS"):`, `case (int, string):`,
+`case (int)Kind.A:`, `case (1):` and `goto case (1);` all keep exactly one space after the keyword; a
+tight `case("XS"):` is normalized to the spaced form and a multi-space run collapses to one, matching
+`dotnet format whitespace` in all three directions. Earlier builds classified that parenthesis as a
+method call and tightened it, so `lint --fix` rewrote every parenthesized switch label in a
+repository. The space is **unconditional**: `csharp_space_after_keywords_in_control_flow_statements =
+false` tightens `if(`/`while(`/`switch(`/`foreach(` and leaves `case (` alone, which is what the SDK
+does and is now pinned by a regression case carrying that key.
+
+If you run `lint` as a CI gate, expect the finding set to move: no more whitespace finding on
+`case (`, and a new one on `case(`. Output shape and exit codes are unchanged.
+
+**An already-correct indent run under a comment is left byte-for-byte alone.** When a line's leading
+whitespace contains a character that is neither a space nor a tab — in practice a non-breaking space
+(U+00A0) inherited from an old encoding — it is now preserved verbatim, provided a comment sits in the
+trivia above the line (an XML doc block, a `//` line, a `/* … */` line, or a trailing `// …` on the
+preceding code line, with any number of blank lines between) **and** the run is already exactly as wide
+as the indent that would be computed. That is what `dotnet format` does: a comment between two tokens
+routes Roslyn through its complex-trivia path, which compares columns and emits no edit when they
+already match. Move the line off its correct column, or take the comment away, and it is re-indented
+normally; for an all-ASCII indent the rule is invisible, since rebuilding a space run at the same width
+reproduces the same bytes. This closes the `JContainer.cs` divergence described above. A run that mixes
+such a character with more than one ASCII space is still re-indented — a documented remaining gap.
 
 ## Native lint (default path)
 

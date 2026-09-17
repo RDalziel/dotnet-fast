@@ -2,9 +2,118 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.6.1`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.7.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.7.0 — 2026-09-17
+
+A fix-safety release. Everything here exists because `--fix` could delete code that was used, or write
+code that did not compile. If you run `lint --fix` or `format` in CI, take this one.
+
+Two behaviour changes are called out at the end. Read those before upgrading.
+
+### `--fix` no longer deletes private members that are used (#277)
+
+Reported from a real repository where a run removed whole method bodies and broke the build. The
+style-tier `IDE0051` pass answered "is this private member used?" from one file's text, and that text
+had been stripped in ways that hid real references. Five shapes could each lose a member something
+still called:
+
+- **A `partial` type** — a member used from another part in another file looked unreferenced. This
+  produced the mass deletions in generated and step files.
+- **A reference inside an interpolated string** — `$"...{EscapeOData(value)}..."` was blanked before the
+  scan, so a member called only from inside a hole looked unused.
+- **An attributed member** — `[DataMember] private int _x;` was deleted and its attribute left behind to
+  land on the next member (`CS0592`). Multi-line attributes, stacked attributes, and attributes whose
+  arguments contain a bracket inside a string each slipped a different check.
+- **A reference only in a doc comment** — `/// <see cref="Helper"/>` was stripped as a comment
+  (`CS1574`, an error under `GenerateDocumentationFile` with `TreatWarningsAsErrors`). Both `///` and
+  `/** */` are now read.
+
+The pass withholds the deletion whenever one file's text cannot prove the member unused. Expect
+`IDE0051` to delete less and report more as manual — a withheld fix costs a look, a deleted method
+costs a build. It reports exactly as before, and only runs at all if your `.editorconfig` sets
+`dotnet_diagnostic.IDE0051.severity`.
+
+**Known limitation:** a member referenced only from a *disabled* `#if` branch is still removed. That
+matches `dotnet format`, which also treats disabled branches as trivia.
+
+### `--fix` no longer writes `??` between incompatible types (#271)
+
+`x != null ? x : y` becomes `x ?? y` only if the operands share a common type. A conditional's natural
+type is looser, so the ternary compiles where the `??` does not — `CS0019`. This shipped from **five**
+independent places, all now closed:
+
+- The style-tier `IDE0029`/`IDE0030` ternary rewrite and the ported **`RCS1084`** are now **report-only**.
+  They still report; they no longer rewrite. Nothing on the line names a target type, so no safe
+  rewrite is derivable — the same call already made for `DF0093` and `S3240`.
+- **`IDE0270`** (folding `if (x == null) { x = y; }`) now synthesises the widening cast, matching
+  `dotnet format` byte for byte: `object value = (object?)text ?? DBNull.Value;`. The cast copies the
+  declaration's own nullable spelling, so it does not introduce `CS8632` in a nullable-disabled project.
+- `IDE0270` no longer folds a **value type** — `int number = 3; if (number == null)` is legal C# but
+  `3 ?? 4` is not.
+- **`DF0004`**'s `== null` → `is null` rewrite is withheld on non-nullable value types (`CS0037`).
+  Reference types and `int?` keep their fix.
+
+Real-world proof: `lint --fix` now builds clean on all seven repositories in the validation corpus.
+MassTransit, which had been failing this exact way, passes for the first time.
+
+`IDE0031`'s `?.` rewrite is also withheld inside a lambda or LINQ query on the same line, where an
+expression tree cannot contain `?.` (`CS8072`). Expression-bodied members and switch-expression arms
+still get fixed. **Known limitation:** when the lambda's `=>` is on an earlier line than the ternary,
+the guard cannot see it.
+
+### `--fix-safe-only` is now actually safe
+
+Several of the rewrites above were classed as safe-tier, so the flag whose purpose is withholding risky
+rewrites was applying them and breaking builds. With those rules withheld or corrected, it holds.
+
+### Fixed: a cached "clean" could hide real findings
+
+The cache fingerprint joined selected diagnostic ids with a comma, so `--diagnostics RCS1084,IDE0029`
+(one unknown id, selecting nothing) and `--diagnostics RCS1084 IDE0029` (two real ids) produced the
+same key. The first cached a "clean" result, and every later verify run of the real selection reused
+it — **exit 0 on a file with findings**. Ids are now length-prefixed. No cache version bump is needed
+and existing entries stay valid.
+
+### `--fix-changed-lines` bounds `--fix` to what was reported
+
+New opt-in flag on `lint`. With a changed-line scope (`--pr-base`, `--staged`, `--ci`, `--affected`,
+`--from`), `lint --fix` reported findings only on the lines your branch touched but rewrote the whole
+file. Adding `--fix-changed-lines` keeps the write inside the same scope the report used; a hunk
+touching even one out-of-scope line is withheld whole rather than split.
+
+`--fix` on its own is **unchanged, byte for byte**, including with every range flag. Given without a fix
+pass or without a resolvable range, the new flag errors rather than quietly doing nothing.
+`lint --diff --fix-changed-lines` previews the bounded patch and writes nothing.
+
+### Formatter parity: two shapes the oracle preserves and we did not
+
+- A space after a `case` label before `(` — `case ("XS"):` was tightened to `case("XS"):`. `dotnet
+  format` keeps the space, so a repo gating on both tools ping-ponged forever (#254).
+- An exotic indent run following an XML doc comment was normalised where the oracle leaves it (#249).
+
+### Behaviour change: `--severity` now applies to `--fix`, not just the report (#251)
+
+**Read this if you run `lint --fix` with `--severity`, `--diagnostics`, `--exclude-diagnostics`, or a
+`dotnet_diagnostic.<ID>.severity = none` in `.editorconfig`.**
+
+The native `DFxxxx` rules skipped that gate on the fix path: a finding your options excluded from the
+report still had its rewrite applied. The report and the write disagreed, and the write was the one
+touching your files. They now agree — `lint --fix` applies a `DFxxxx` fix only when the same invocation
+would have reported it.
+
+Practical effect: **`lint --fix --severity error` applies fewer fixes than it did in 1.6.1**, and the
+ones it applies are the ones it told you about. Plain `lint --fix` with no selection options is
+unaffected and byte-identical. Ported analyzer rules were always gated correctly.
+
+### Behaviour change: fewer fixable findings overall
+
+Between the `IDE0051` withholds, the coalesce family going report-only, and `DF0004`'s value-type
+guard, a repository that ran `lint --fix` in 1.6.1 will see some findings move from **fixable** to
+**manual**. The fixable rule count moves from 144 to 143. Nothing stopped being *reported*; the tool
+stopped writing rewrites it could not prove safe from the information available to it.
 
 ## 1.6.1 — 2026-09-17
 
@@ -113,10 +222,10 @@ the property pass — which corrects an older line in the docs that called it a 
 ### `dead-code` and `dead-dependencies` show progress on long runs (#215)
 
 Both commands now stream phase-by-phase progress to **stderr**: discovery, scanning, and for
-`dead-code` the symbol table and the mark pass. Each phase names its denominator, each scanned project
-gets a `[k/N]` line with its file or reference count and timing, and each phase closes with its elapsed
-time. Under `--verify`/`--verify-tests` there is one line per project built and one per bisect
-candidate.
+`dead-code` the symbol table and the mark pass. The scanning phase names its denominator and gives each
+scanned project a `[k/N]` line with its file or reference count and timing; the other phases report
+their start and finish only, and each phase closes with its elapsed time. Under
+`--verify`/`--verify-tests` there is one line per project built and one per bisect candidate.
 
 Per-item lines are per **project**, never per source file. At or below 50 projects every project gets a
 line; above that they collapse to periodic ticks — every 25 projects and at least ~2 s apart — with a

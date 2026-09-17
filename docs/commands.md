@@ -71,6 +71,7 @@ Useful options:
 | `--staged` / `--affected` / `--ci` / `--pr-base <branch>` | Scope to changed files — the index, the branch, or the CI range. |
 | `--all` (alias `--force-all`) | Accepted as a **no-op** (also on `build`/`test-plan`): these commands already process the whole target, so `--all` just means "no range scoping" and is ignored. Lets a pipeline share one range string with `affected --all` without stripping the flag. |
 | `--whole-file` / `--changed-lines` | Opt out of / into changed-line scoping (see below). |
+| `--fix-changed-lines` | With `--fix`/`--fix-safe-only` and a range flag, bound the fix's writes to the same changed-line scope the report used (see below) — instead of `--fix`'s default of rewriting the whole file. |
 | `--severity <level>` | Only report at/above a level (`info`/`warning`/`error`). |
 | `--exclude-diagnostics <ID...>` | Suppress specific rule IDs (e.g. `DF0001`). |
 | `--baseline <file>` | Compare against a saved baseline and fail only on *new* findings. |
@@ -91,8 +92,11 @@ Findings honor your `.editorconfig` severity settings, just like a real build �
 report covers only the lines you actually changed — pre-existing findings on untouched lines of a file
 you happen to touch are suppressed, so a branch that lags `main` is not failed by old debt. Pass
 `--whole-file` to report a touched file's full backlog, or `--changed-lines` to force the same scoping
-on an explicit `--from`/`--to` or `--ci` push build. Scoping affects reported findings only; `--fix`
-still rewrites whole files.
+on an explicit `--from`/`--to` or `--ci` push build. Scoping affects reported findings only by default —
+`--fix` still rewrites whole files unless you also pass `--fix-changed-lines` (needs a range flag and
+`--fix`/`--fix-safe-only`), which bounds the fix to the exact same scope the report used: the fix is
+computed the usual way and then reconciled against the original hunk by hunk, so a hunk touching even
+one out-of-scope line is withheld in full rather than partially applied.
 
 **Every scope covers every language this tool reads.** `--staged`, `--affected`, `--ci`, `--pr-base`,
 `--base` and `--from`/`--to` resolve changed `.cs` **and** `.fs`/`.fsi`/`.fsx` files, so a changed F#

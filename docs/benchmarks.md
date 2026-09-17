@@ -254,15 +254,18 @@ output: the verification requirement means a faster run is the same run.
 
 Speed only counts if the output is right. The byte-exact whole-repository parity measurements against
 real `dotnet format whitespace` live in the [support matrix](support-matrix.md#formatter-scope). The
-current, coverage-checked sweep (2026-08-03):
+current, coverage-checked sweep (2026-09-16):
 
 | Repository | Files both tools formatted | Parity |
 |---|---|---|
 | Serilog | 216 / 216 | 100% |
 | AutoMapper | 512 / 512 | 100% |
-| Newtonsoft.Json | 940 / 941 | 99.89% |
+| Newtonsoft.Json | 942 / 942 | 100% |
 | Polly | 775 / 776 | 99.87% |
 | Dapper | 153 / 154 | 99.35% |
+
+Newtonsoft.Json moved from 940/941 = 99.89% (2026-08-03, one one-sided file) to 942/942 = 100% with zero
+one-sided files; the other four are unchanged from that sweep, re-measured in the same session.
 
 Two things about this table are worth more than the numbers in it.
 
@@ -291,18 +294,26 @@ are fixed; the coverage probe now reports zero one-sided files on Dapper, and th
 156/157 = 99.36%. The single remaining divergence is the indentation of a `= new(…)` continuation line
 in `Dapper\CompiledRegex.cs`.
 
-**Newtonsoft.Json now fails that check instead, on one file, without its figure moving.** Details are in
-the [support matrix](support-matrix.md#formatter-scope): `Issue3080.cs` ends with an unterminated
-`#endif`, which makes `dotnet format` trim the trailing whitespace on every directive line in the
-document — a known final-line edge case, reachable only by the probe's synthetic perturbation, not by
-the real source. Whole-tree parity is 944/945 = 99.89%, exactly the published floor.
+**Newtonsoft.Json failed that check on the 2026-08-03 sweep instead, on one file, without its figure
+moving.** Details are in the [support matrix](support-matrix.md#formatter-scope): `Issue3080.cs` ends
+with an unterminated `#endif`, which makes `dotnet format` trim the trailing whitespace on every
+directive line in the document — a known final-line edge case, reachable only by the probe's synthetic
+perturbation, not by the real source. Whole-tree parity was 944/945 = 99.89%, exactly the floor
+published at the time. On the 2026-09-16 sweep it no longer reproduces.
 
-Newtonsoft.Json is one file short of 100% for a separate, also-deliberate reason: a byte-exact,
+Newtonsoft.Json was one file short of 100% for a separate, also-deliberate reason: a byte-exact,
 BOM-aware comparer replaced a text comparer that decoded both sides first and treated a non-breaking
-space (U+00A0) as equal to an ordinary space. One file indents a doc-comment continuation with
-non-breaking spaces; `dotnet format` preserves them, `dotnet-fast` normalizes them to ASCII spaces.
-The previously published 945/945 was a measurement artifact, and correcting it downward is what the
-measurement is for.
+space (U+00A0) as equal to an ordinary space. One file indents a declaration with non-breaking spaces;
+`dotnet format` preserves them, `dotnet-fast` normalized them to ASCII spaces. The previously published
+945/945 was a measurement artifact, and correcting it downward is what the measurement is for.
+
+**Closed 2026-09-16.** `dotnet-fast` now preserves such a run when a comment sits in the trivia above
+the line and the run is already exactly the computed indent width — which is what `dotnet format` does,
+probed directly rather than inferred (full matrix in the repository's `parity/FINDINGS.md`). Re-measured
+on the same corpus pin with the same harness: Newtonsoft.Json **942/942 = 100%** over files both tools
+formatted, zero one-sided files, whole-tree 945/945. The `Issue3080.cs` coverage-check failure above no
+longer reproduces either. Polly, Dapper, AutoMapper and Serilog re-measured byte-for-byte unchanged in
+the same session — the no-regression control for the `case (` spacing fix that shipped alongside it.
 
 Polly's single remaining divergence is a multi-space argument run in
 `src\Snippets\Docs\ResiliencePipelineRegistry.cs`.
