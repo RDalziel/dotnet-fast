@@ -2,9 +2,32 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.6.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.6.1`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.6.1 — 2026-09-17
+
+One security fix. No behaviour changes, no command surface changes: every command produces
+byte-identical output to 1.6.0.
+
+### Fix: patched TLS library (RUSTSEC-2026-0285)
+
+The TLS stack bundled in 1.6.0 and earlier (`rustls` 0.23.40) accepted TLS 1.3 handshake messages
+across encryption level boundaries. It is updated to 0.23.45, which fixes it.
+
+This affects the two places the tool opens an HTTPS connection of its own — `dotnet-fast update`
+(the version check and download) and the remote build cache client (`build --plan` against Azure
+Blob/Table storage). Formatting, linting, `affected`, `test-plan`, `dead-code` and `dead-deps` do no
+networking at all and were never exposed.
+
+Nothing about the fix changes what the tool does: no flag, default, exit code, report field or
+output byte moves. If you do not use `update` or the remote build cache, upgrading is optional.
+
+**NuGet users go from 1.5.1 straight to 1.6.1.** The 1.6.0 package was never published — its
+publish run failed on infrastructure, and rather than ship a package with a known-vulnerable TLS
+library we folded it into this release. Everything in the 1.6.0 notes below is in 1.6.1, and the
+1.6.0 GitHub Release binary stays available for anyone who already has it.
 
 ## 1.6.0 — 2026-09-16
 
