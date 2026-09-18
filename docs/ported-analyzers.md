@@ -2652,7 +2652,7 @@ Calling `.ToString()` on a value that is already a `string` does nothing. Fires 
 
 *Port of Roslynator.Analyzers RCS1098 · Style · has an autofix* · [upstream docs](https://josefpihrt.github.io/docs/roslynator/analyzers/RCS1098)
 
-A "Yoda" equality comparison with the constant on the left (`0 == x`, `null == s`) reads less naturally than `x == 0`. Fires at the left operand of an `==` / `!=` whose left side is a literal and right side is not; the fix swaps the operands (sound for equality). Relational operators are left alone (that is StyleCop SA1131). Native port of Roslynator RCS1098.
+A "Yoda" equality comparison with the constant on the left (`0 == x`, `null == s`) reads less naturally than `x == 0`. Fires at the left operand of an `==` / `!=` whose left side is a literal and right side is not; the fix swaps the operands, and is withheld when an operand's same-file type declares its own `operator ==`/`!=` (two overloads of a user-defined pair need not take their operands in the same order). Relational operators are left alone (that is StyleCop SA1131). Native port of Roslynator RCS1098.
 
 ### `RCS1102` — Make class static.
 
@@ -3252,7 +3252,7 @@ Two `switch` sections, or two branches of an if/else-if chain, with the same sta
 
 *Port of SonarAnalyzer.CSharp S1940 · Style · has an autofix* · [upstream docs](https://rules.sonarsource.com/csharp/RSPEC-1940/)
 
-Negating a comparison (`!(a == b)`, `!(a < b)`) is clearer written with the opposite operator (`a != b`, `a >= b`). Fires at the `!` of a `!(<comparison>)` over `== != < <= > >=`; the fix substitutes the opposite operator, preserving operand order. Native port of SonarAnalyzer.CSharp S1940.
+Negating a comparison (`!(a == b)`, `!(a < b)`) is clearer written with the opposite operator (`a != b`, `a >= b`). Fires at the `!` of a `!(<comparison>)` over `== != < <= > >=`. Fixable for `==`/`!=` only (substitutes the opposite operator, preserving operand order): `<`/`<=`/`>`/`>=` stay report-only, since `NaN` and a user-defined `operator <`/`>=` can both break the `!(a < b)` == `a >= b` identity in ways a syntactic rule cannot see. Even the `==`/`!=` fix is withheld when an operand's same-file type declares its own `operator ==`/`!=`, which C# requires to be declared together but never to be logical opposites. Native port of SonarAnalyzer.CSharp S1940.
 
 ### `S2094` — Classes should not be empty.
 
@@ -3984,7 +3984,7 @@ A `: base(…)` / `: this(…)` initializer should start its own line, not trail
 
 *Port of StyleCop.Analyzers SA1131 · Style · has an autofix* · [upstream docs](https://github.com/DotNetAnalyzers/StyleCopAnalyzers/blob/master/documentation/SA1131.md)
 
-A "Yoda" comparison with the constant on the left (`0 == x`, `5 > x`) reads less naturally than `x == 0` / `x < 5`. Fires at the left operand of a comparison (`== != < <= > >=`) whose left side is a literal and right side is not; the fix swaps the operands, flipping the operator for relational comparisons. Broader than Roslynator RCS1098 (which is equality-only). Native port of StyleCop.Analyzers SA1131.
+A "Yoda" comparison with the constant on the left (`0 == x`, `5 > x`) reads less naturally than `x == 0` / `x < 5`. Fires at the left operand of a comparison (`== != < <= > >=`) whose left side is a literal and right side is not; the fix swaps the operands, flipping the operator for relational comparisons, and is withheld when an operand's same-file type declares its own comparison operator (two overloads of a user-defined pair need not take their operands in the same order). Broader than Roslynator RCS1098 (which is equality-only). Native port of StyleCop.Analyzers SA1131.
 
 ### `SA1132` — Do not combine fields.
 

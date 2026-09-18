@@ -148,7 +148,7 @@ against real open-source repositories before it ships.
 | `DF0091` | `new T() ?? y` — a `new` expression is never null, so the right operand is dead. (DF0085 = `this`, DF0079 = literal.) | fix |
 | `DF0092` | `this is null` is always false, `this is not null` always true, inside an instance member. | fix |
 | `DF0093` | `a == null ? b : a` / `a != null ? a : b` is `a ?? b` **when the operand types are compatible**; `a` must be a side-effect-free *simple* reference. Report-only since v0.306.2 (issue #219): the equivalence is a type fact a syntactic rule cannot establish — `x != null ? x : DBNull.Value` compiles because the conditional is target-typed to `object`, while `x ?? DBNull.Value` is `CS0019`. | report-only |
-| `DF0094` | `!(a < b)` / `!(a >= b)` negates a relational test with a direct opposite. The `==`/`!=` form is DF0047. | fix |
+| `DF0094` | `!(a < b)` / `!(a >= b)` negates a relational test with a direct opposite **for a total order**. Report-only (issue #279): `NaN` breaks the identity for `float`/`double` (every relational comparison against `NaN` is `false`), and a user-defined `operator <`/`>=` need not be logical opposites either — neither is excludable syntactically. The `==`/`!=` form is DF0047, which stays fixable (guaranteed opposites by the language spec, `NaN` included). | report-only |
 | `DF0095` | `default(int)` / `default(bool)` — the literal (`0`/`false`) is clearer. Integer family and `bool` only. | fix |
 | `DF0096` | `if (c) S; else S;` runs the same statement either way; the condition has no effect. The ternary form is DF0036. | report-only |
 | `DF0097` | `xs.Skip(0)` skips nothing — a no-op. Matched by method name. | report-only |

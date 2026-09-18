@@ -2,9 +2,76 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.8.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.8.1`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.8.1 — 2026-09-18
+
+Fix-safety fixes. Every one of them stops the tool from writing a change it could not prove was
+correct. If you run `--fix` or `dead-code --write` in CI, take this release.
+
+The pattern across all of them: the rewrite was right for the *common* case and wrong for a case the
+rule could not see. Three of these compile cleanly and silently change what your program does, which
+is worse than a build break — nothing tells you.
+
+### `dead-code --fix --write` no longer deletes compiler-referenced polyfills
+
+Reported against Polly, where it deleted `internal static class IsExternalInit` and broke the build
+with `CS0518` on every `init` accessor and every record, across three target frameworks.
+
+Nothing in the source ever names that type. The compiler references
+`System.Runtime.CompilerServices.IsExternalInit` by well-known fully-qualified name at code generation
+time, so a reachability graph built from source references correctly concludes nothing reaches it —
+and deletes a type the compiler requires. Any project targeting netstandard2.0 or older frameworks
+that hand-rolls these shims (or uses a polyfill package that emits them into your source) was exposed.
+
+The same mechanism covers `System.Index` and `System.Range` — `xs[^1]` and `s[1..]` lower to
+constructors resolved the same invisible way. Those are now protected too.
+
+Matching is on the full name, so your own unrelated type that happens to share a simple name is still
+reported normally.
+
+### `lint --fix` now reaches a fixed point on nullable array types
+
+`string[]?` sent `lint --fix` into a loop: `SA1011` inserted a space before the `?`, `SA1018` removed
+it, and each run undid the last. A CI job running `--fix` to convergence would never terminate.
+
+Both rules are faithful ports — upstream StyleCop has the identical contradiction, and an IDE never
+exposes it because it offers one fix at a time. `SA1011` still **reports** this shape; it no longer
+offers the insert fix for it, which leaves the file exactly where `dotnet format` puts it.
+
+### Four rewrites that could silently change your program's behaviour
+
+Each of these is now withheld when the tool can see the hazard, and still reported:
+
+- **`x == null` → `x is null`** when the operand's type declares its own `operator ==`. A user-defined
+  `==` can report a live reference as equal to null — Unity's fake-null pattern, or any hand-rolled
+  null-object type — while `is null` always does the real check. The rewrite flips the result with no
+  compile error.
+- **`!(a == b)` → `a != b`.** C# requires a user-defined `==`/`!=` pair to be *declared* together; it
+  does not require them to *agree*. Only the predefined operators are guaranteed opposites.
+- **`!(a < b)` → `a >= b`** on floating-point operands. With `NaN` on either side, every ordering
+  comparison is false, so the negation and the flipped operator disagree.
+- **`0 < s` → `s > 0`.** Swapping operands re-binds overload resolution: `operator <(int, T)` and
+  `operator >(T, int)` are different methods and need not be consistent.
+
+These guards read the operand's written declaration, so they fire when the type is declared in the
+same file. A type from another file, a partial whose operator lives elsewhere, or an external package
+type is still invisible to them and keeps the fix — closing that needs a project-wide symbol index,
+which is tracked separately.
+
+### What moves
+
+`lint --fix`, `lint --fix-safe-only` and `dead-code --fix --write` apply **fewer** rewrites than in
+1.8.0 — the ones they withhold are the ones that could not be proven safe. Nothing stopped being
+reported: every withheld rewrite still appears as a finding, marked manual. The published fixable rule
+count is unchanged at 142, because no rule became report-only; each one narrowed the shapes it will
+rewrite.
+
+Real-world check: `format`, `lint --fix` and `dead-code --fix --write` now all build clean on every
+repository in the validation corpus — Serilog, Dapper, AutoMapper, FluentValidation, MassTransit,
+Polly and Newtonsoft.Json — for the first time.
 
 ## 1.8.0 — 2026-09-18
 
