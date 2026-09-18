@@ -41,6 +41,14 @@ and every ported analyzer rule carry full driver metadata (`shortDescription`, `
 `helpUri` pointing at the rule's own docs page), so the alert detail in GitHub shows the same
 explanation you'd get from `dotnet-fast lint --explain <id>`.
 
+The driver block also carries `version` — the dotnet-fast build that produced the report — so an
+alert (or an archived `.sarif` long after the job log has rotated) can be attributed to a specific
+version:
+
+```bash
+jq -r '.runs[0].tool.driver.version' lint.sarif
+```
+
 ## A working GitHub Actions job
 
 ```yaml

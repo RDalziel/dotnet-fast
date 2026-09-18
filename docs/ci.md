@@ -298,9 +298,24 @@ commands consume via `--projects-file`:
 ```
 
 The manifest is `{ schemaVersion, repositoryPath, range:{from,to,mergeBase}, changedFiles,
-affectedProjects:[{name,path,isTestProject}], testProjects:[...] }`. Consumers read the `path` keys, so
-`test-plan` keeps only the test subset on its own; the explicit `testProjects` list makes the artifact
-self-describing for other tooling.
+affectedProjects:[{name,path,isTestProject}], testProjects:[...], toolVersion }`. Consumers read the
+`path` keys, so `test-plan` keeps only the test subset on its own; the explicit `testProjects` list
+makes the artifact self-describing for other tooling.
+
+## Attributing an archived report to a build
+
+Job logs rotate; published artifacts stay. Every object-shaped JSON document carries `toolVersion`,
+and every SARIF report carries `runs[].tool.driver.version`, so a report found months later still
+names the build that produced it:
+
+```bash
+jq -r .toolVersion report/*.json
+jq -r '.runs[0].tool.driver.version' affected.sarif
+```
+
+The CI job matrices (`affected --format matrix`, `test-plan`/`build --format matrix|ado-matrix`) and
+`format-report.json` deliberately carry no such key — a stray field there would become a phantom job,
+or break a consumer expecting `dotnet format`'s own report shape.
 
 ## Minimal-fetch mode (drop `fetch-depth: 0`)
 

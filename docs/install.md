@@ -388,7 +388,9 @@ a `win-x64` binary only. This is a documented limitation, not a bug:
 **The banner reads `dotnet-fast 1.0.0 (manifest pins 1.0.0-rc.1 at …)`** — the binary that ran is not
 the version the repository pins. Usually a global install is shadowing the manifest, or
 `dotnet tool restore` has not run since the manifest changed. The banner names both versions and the
-manifest path, so you can see exactly which two disagree.
+manifest path, so you can see exactly which two disagree. The same version also sits inside every
+JSON/SARIF artifact the run produces (`jq -r .toolVersion report/*.json`), so the check still works
+on a pipeline that discards stderr, or on a report you saved weeks ago.
 
 **`Could not execute because the specified command or file was not found`** (from
 `dotnet dotnet-fast …`) — the SDK found no manifest in scope that declares the `dotnet-fast` command.

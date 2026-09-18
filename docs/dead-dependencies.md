@@ -49,6 +49,12 @@ dead-dependencies: 1 finding(s) — 1 unused package(s), 0 unused project ref(s)
 There's no "maybe unused" bucket. A reference is either proven unused (reported) or it stays silent —
 ambiguity always resolves to "keep," never to a finding.
 
+`DD0003` and `DD0006` are the two rules that need no usage analysis at all, so
+[`doctor`](commands.md#doctor) can report them too: `dotnet-fast doctor --include-dependency-smells`
+runs the same two rules (same code, not a copy) as the info-level codes `ORPHAN-PKG-VERSION` and
+`REDUNDANT-OVERRIDE`. That's the build-free, report-only view; `dead-dependencies` is still where you
+get removals and `--fix`.
+
 ### Orphaned `GlobalPackageReference` (`DD0008`)
 
 A `GlobalPackageReference` is conventionally build tooling (SourceLink, analyzers, MinVer, …), added by

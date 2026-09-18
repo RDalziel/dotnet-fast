@@ -2,9 +2,71 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.7.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.8.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.8.0 — 2026-09-18
+
+Three additions. Nothing existing changes behaviour: every command you already run produces the same
+bytes and the same exit codes as 1.7.0.
+
+### New: `rewrite` — structural search across your code
+
+`dotnet-fast rewrite` finds code by **shape** rather than by text. A pattern is C# with
+metavariables, so `Foo($A, $B)` matches any two-argument call to `Foo` regardless of what the
+arguments look like or how the call is wrapped across lines — no regex, no false hits inside strings
+or comments.
+
+```
+dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)'
+dotnet-fast rewrite --pattern 'Foo($A, $B)' --rewrite 'Bar($B, $A)'     # preview a transformation
+dotnet-fast rewrite --pattern 'ObsoleteHelper($A)' --check              # CI gate: exit 1 on any hit
+```
+
+With `--rewrite` you get a unified diff of what the transformation *would* do. `--check` exits 1 on
+any match, which makes it a gate for "this pattern must not reappear". `--json` gives the machine-
+readable form. `--context` and `--selector` narrow what counts as a match.
+
+**There is deliberately no `--write`.** The command previews and reports; it never edits your files.
+That is worth explaining rather than leaving you to discover it.
+
+Applying a structural rewrite safely needs a guarantee that the result still compiles, and the only
+check available here is a re-parse of the output. That check is permissive on a file that already
+fails to parse — and the C# grammar in use does not parse every modern construct, so a single C# 11
+list pattern in a file switches the check off for that whole file. A malformed template could then
+write code that does not compile while reporting success. Rather than ship a writer whose only
+safety net has that hole, the command ships read-only. Apply the previewed diff yourself, with your
+own review, and you keep the part that was never in doubt.
+
+Two properties of the preview to know before you apply one by hand:
+
+- **Precedence is not adjusted.** `--pattern 'Wrap($X)' --rewrite '$X'` on `Wrap(1 + 2) * 10`
+  previews `1 + 2 * 10`. That compiles and changes the value from 30 to 21. A capture spliced into a
+  different precedence context is never parenthesised.
+- **Comments inside a match are dropped.** `Foo(1 /* keep me */, 2)` loses the comment.
+
+Both are printed as a caution on every non-empty preview, not just documented here.
+
+`--check` tells you when it could not read something rather than calling it clean: a file that is
+not valid UTF-8, one containing the reserved marker, or one the grammar cannot parse is counted,
+named with its reason, and makes the run exit 1. A gate that could not look at everything should not
+report success.
+
+### Every machine-readable document now says which build produced it
+
+`--format json`, SARIF output and the report files now carry the producing version. An artifact you
+find in a CI run is self-describing, so a result can be attributed to a specific build without
+reconstructing it from install logs — which, when a feed policy silently serves an older version
+than your manifest pins, is otherwise guesswork.
+
+New fields are appended; nothing existing was renamed or moved.
+
+### `doctor --include-dependency-smells`
+
+Opt-in flag folding the dead-dependency MSBuild checks into `doctor`: orphaned central package
+versions, duplicate references, and the rest of the CPM rules, reported alongside everything else
+`doctor` already looks at. Off unless you ask for it, and `doctor`'s existing output is unchanged.
 
 ## 1.7.0 — 2026-09-17
 

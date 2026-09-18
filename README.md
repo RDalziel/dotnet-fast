@@ -53,6 +53,7 @@ the build. Copy-paste Actions and Azure Pipelines wiring:
 | Command | What it's for |
 |---|---|
 | [`lint`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#lint) | Report formatting + lint findings (the fast CI gate). `--fix` applies the safe fixes; `--deep` adds your real Roslyn analyzers. Guides: [rules](https://github.com/RDalziel/dotnet-fast/blob/main/docs/rules.md) · [ported analyzers](https://github.com/RDalziel/dotnet-fast/blob/main/docs/ported-analyzers.md) · [deep linting](https://github.com/RDalziel/dotnet-fast/blob/main/docs/deep-linting.md) · [guardrails](https://github.com/RDalziel/dotnet-fast/blob/main/docs/guardrails.md). |
+| [`rewrite`](https://github.com/RDalziel/dotnet-fast/blob/main/docs/commands.md#rewrite) | Structural search & replace (codemod): find every occurrence of a C# pattern regardless of formatting, preview a rewrite as a diff (read-only — no `--write`), `--check` to gate CI. A match it cannot prove safe to preview as a rewrite is withheld, never guessed at. |
 
 **Code health**
 

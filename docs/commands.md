@@ -13,7 +13,8 @@ current directory.
 
 ## Contents
 
-**Lint & format** — [`lint`](#lint) · [`format`](#format) · [`editorconfig`](#editorconfig)
+**Lint & format** — [`lint`](#lint) · [`format`](#format) · [`rewrite`](#rewrite) ·
+[`editorconfig`](#editorconfig)
 
 **Code health** — [`metrics`](#metrics) · [`dead-code`](#dead-code) ·
 [`dead-dependencies`](#dead-dependencies) · [`bom`](#bom) · [`doctor`](#doctor)
@@ -42,6 +43,23 @@ version always leads the line, so `head -1` of stderr answers "what actually ran
 It goes to stderr, never stdout, so `--json`, `--format count|json|matrix|traversal`, and SARIF output
 are unaffected. Turn it off with `DOTNET_FAST_NO_BANNER=1` (also off under `-v quiet`, in agent mode,
 and in the git hooks this tool installs).
+
+**The same answer inside the artifact.** The banner lives in the job log, which CI eventually rotates
+away; an archived report outlives it. So every object-shaped JSON document carries a `toolVersion`
+key, and every SARIF report carries `runs[].tool.driver.version`:
+
+```bash
+jq -r .toolVersion report/*.json
+jq -r '.runs[0].tool.driver.version' affected.sarif
+```
+
+The stamp sits *inside* the payload (never as a prefix on it), and is additive — nothing existing is
+renamed or moved. Four shapes deliberately stay untouched, because a key there would break a
+consumer: the top-level arrays (`--report`'s `format-report.json`, `doctor --json`,
+`lint --list-rules --json`), the CI job matrices (`test-plan`/`affected`/`build --format
+matrix|ado-matrix`, where a stray key becomes a phantom job), the spec-governed CycloneDX/SPDX
+documents `bom` writes (which already name the producing tool the spec's way), and the tool's own
+internal caches.
 
 ---
 
@@ -665,6 +683,69 @@ model, and why `serialNumber` is reproducible across reruns of an unchanged proj
 
 ---
 
+## `rewrite`
+
+An ast-grep-style structural search-and-replace (codemod) over C# source, built on the same
+tree-sitter CST `lint` uses. Write the C# you want to find with `$METAVARIABLE` holes; matching is
+**structural** — whitespace, line wrapping, and comments in the target never matter — and **exact**:
+extra parentheses or `this.` qualification are different trees. `$NAME` matches one node and binds
+it, `$$$NAME` matches a run of zero or more siblings, `$_` matches one node without binding.
+
+**Read-only: there is no `--write`.** `--rewrite` previews the codemod as a unified diff; applying it
+is on you (`git apply`, or by hand) — see "Safety" below for why that is a deliberate design choice,
+not a missing feature.
+
+```bash
+dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)' src                          # structural grep
+dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)' --check src                  # CI gate: exit 1 on any match
+dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)' \
+                     --rewrite 'Assert.That($B, Is.EqualTo($A))' src                 # DRY-RUN: preview the diff (the only rewrite mode)
+```
+
+| Option | Effect |
+|---|---|
+| `--pattern <PATTERN>` | The C# snippet to find, required. |
+| `--rewrite <TEMPLATE>` | Replacement template using the pattern's metavariables. Without it, `rewrite` only searches. |
+| `--rewrite` | Preview the rewrite as a unified diff. There is no `--write` — this is the only rewrite mode. |
+| `--check` | Exit `1` when the pattern matches anywhere, **or** when any file could not be examined — the CI gate. Never writes. |
+| `--json` | Machine-readable report: `pattern`, `matchCount`, `droppedUnsafe`, `skippedConditional`, `skippedFiles`, `skippedFilesDetail`, per-file `matches` (`line`/`column`/`before`/`after`), `elapsedMs`, `toolVersion`. |
+| `--context <CONTEXT>` | Pin the harness the pattern parses in (`file`, `member`, `statement`, `expression`) instead of auto-detecting. |
+| `--selector <KIND>` | Pin the pattern root to a specific tree-sitter node kind, for the rare case auto-detection resolves to a wider node than intended. |
+
+**Safety.** With no `--write`, a preview still carries two hazards a person applying it by hand
+should know about, plus the withhold/report guards on the preview itself:
+
+- **Precedence.** A splice is never re-parenthesized: a captured node's bytes are inserted verbatim,
+  so a capture landing in a different operator-precedence context than it had in the pattern changes
+  what the expression computes, with no warning. `--pattern 'Wrap($X)' --rewrite '$X'` on
+  `Wrap(1 + 2) * 10` previews `1 + 2 * 10` — 21, not 30. Read every diff for a changed *value*, not
+  just a changed shape.
+- **Comment loss.** A comment inside the match but outside every binding is dropped, not preserved —
+  it is covered by the whole-match replacement. A comment inside a binding survives, spliced along
+  with the rest of that binding's bytes.
+- A rewrite that would introduce a parse error the file did not already have is **withheld from the
+  preview** — the same post-fix verification `lint --fix` uses — and counted as `droppedUnsafe`. This
+  net has a known hole (it silently does nothing for a file that already fails to parse), which is
+  exactly why there is no `--write`: see `docs/rewrite.md`.
+- A match inside an `#if`/`#elif`/`#else` branch is **never previewed as a rewrite**, active branch or
+  not: `rewrite` walks bare files with no project context, so unlike `lint --fix` it has no real
+  preprocessor symbols to tell a compiled-in branch from a disabled one, and treats every
+  conditional region as unsafe rather than guess. Counted as `skippedConditional`. Search mode
+  (no `--rewrite`) still lists these matches — listing is read-only.
+- **A file this tool could not even examine — not valid UTF-8, or containing the reserved
+  `__dnfMeta` marker — is counted and named (`skippedFiles`/`skippedFilesDetail`), never silently
+  dropped.** `--check` exits `1` while any exist, independent of `matchCount`: a gate that did not
+  look at everything cannot call the result clean.
+
+Rewrites splice each captured node's **verbatim source bytes**, so internal formatting and comments
+inside a binding survive unchanged; a comment inside the match but outside every binding does not (it
+is covered by the whole-match replacement). Metavariable names are uppercase (`$NAME`); a repeated
+one constrains the match (`$A == $A` matches `x == x`, not `x == y`). A pattern that does not parse in
+any harness context fails with a clear error naming every context it tried — pin one with
+`--context` when auto-detection guesses wrong.
+
+---
+
 ## `doctor`
 
 A fast, build-free scan for common workspace problems — duplicate package references, conflicting target
@@ -672,9 +753,21 @@ frameworks, stale lockfiles, central-package-management mistakes, and more. No r
 
 ```bash
 dotnet-fast doctor App.sln
+dotnet-fast doctor App.sln --include-dependency-smells   # + 2 opt-in CPM checks (info)
 ```
 
 Each finding has a short code (e.g. `DUP-PKG`, `TFM-CONFLICT`) and a one-line explanation of the fix.
+
+`--include-dependency-smells` adds two more central-package-management checks, both info-level:
+`ORPHAN-PKG-VERSION` (a `<PackageVersion>` in `Directory.Packages.props` that no project references)
+and `REDUNDANT-OVERRIDE` (a `VersionOverride` that just repeats the central version). They are the
+same rules [`dead-dependencies`](dead-dependencies.md) reports as `DD0003` and `DD0006`, run by the
+same code — go there if you want the removals as well as the report.
+
+The flag is **off by default**, and turning it off changes nothing about what `doctor` has always
+done: same findings, same output shapes, same exit codes. Both new checks are info-level, so they
+never fail a plain run — but `--strict` gates on info findings, so `--strict
+--include-dependency-smells` together can fail a repository that `--strict` alone passes.
 
 ---
 
