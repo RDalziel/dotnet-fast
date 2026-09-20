@@ -33,10 +33,25 @@ file, `--deep` used to report nothing from the analyzers that depend on them; no
 `dotnet build` reports. Where a condition is too exotic to resolve, the old, more inclusive reading is kept
 rather than dropped — the resolution only ever adds inputs, so it cannot make a finding disappear.
 
-Still outside the boundary: `#if` regions (no preprocessor symbols are defined), types from a
-`ProjectReference` rather than a NuGet package, and the extra implicit usings the Web and Worker SDKs
-add — those namespaces come from framework packs the analyzer host does not load, so synthesising them
-would hide real findings rather than surface more.
+`#if` regions are now in the boundary too: `--deep` parses with your project's real preprocessor symbols
+— the Debug-configuration defaults (`DEBUG`/`TRACE`), `<DefineConstants>` (wherever declared), and the
+target framework's implicit set (`NET8_0`, `NETSTANDARD2_0`, …) — so `#if DEBUG`/`#if NET8_0` code is
+analyzed and the branch a real Debug build excludes is not. On a project that targets more than one
+framework, only the first one is modeled; the other targets' `#if` branches stay outside the boundary,
+since analyzing several at once could activate contradictory branches in one compilation.
+
+Types from a `ProjectReference` to another project in your solution are now in the boundary too, with one
+condition: **the referenced project must have been built**, and its output must not be older than its own
+source (a stale build is treated the same as an unbuilt one — the safe direction). When that's true,
+analyzers that need to know a type comes from (or derives from) a sibling project see it exactly as
+`dotnet build` does. Under restore-only `--deep` (no build), or against an unbuilt project, behaviour is
+unchanged from before. Worth knowing before you upgrade a multi-project solution: analyzers can now fire on
+code that was previously invisible to them, so `--deep` finding counts can go up — see the release notes for
+what changed.
+
+Still outside the boundary: the extra implicit usings the Web and Worker SDKs add — those namespaces come
+from framework packs the analyzer host does not load, so synthesising them would hide real findings rather
+than surface more.
 
 ## Why it's opt-in (not the default)
 

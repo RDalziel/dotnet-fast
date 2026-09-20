@@ -893,14 +893,23 @@ dotnet-fast update --to 0.305.0 # pin to a specific version
 This doesn't replace `dotnet tool update` — it *runs* it, with the arguments that match how your copy
 was installed. A manifest-pinned install and a global install need different arguments, and using the
 wrong form gives you a confusing error instead of an update. The tool already resolves your
-`.config/dotnet-tools.json` for the version banner, so it knows which case you are in.
+`.config/dotnet-tools.json` for the version banner, so it knows which case you are in. A copy installed
+via winget is recognised too, and is updated with `winget upgrade` instead — winget manages its own
+packages, and running `dotnet tool update` against one would install a second, independently-managed
+copy onto PATH rather than update it.
 
 | Option | Effect |
 |---|---|
 | `--check` | Report the installed and latest versions, then exit. Changes nothing. |
-| `--dry-run` | Print the `dotnet tool update` command that would run. Needs no network. |
+| `--dry-run` | Print the update command that would run. Needs no network. |
 | `--to <VERSION>` | Update to an exact version instead of the latest. |
 | `--exit-code-on-outdated` | Exit `1` when a newer version exists — for a pipeline that wants to fail (or warn) when its tooling has fallen behind. Implies `--check`. |
+| `--explain-install` | Print how your install was detected (manifest path, winget, or "no positive signal") and exit. Changes nothing, needs no network. |
+
+**winget tracks minor and major releases only** — patches ship to NuGet first and ride to the next
+minor before winget sees them. NuGet (`RDLL.dotnet-fast`) is the always-current channel; if `update`
+reports a winget copy as outdated against a patch-only release, that's the cadence working as
+designed, not a stalled project.
 
 **A manifest update rewrites `.config/dotnet-tools.json`**, which is tracked in most repositories —
 so it is a source-control change, not just a machine change. The command says so before it acts, and

@@ -2,9 +2,86 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.8.1`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.9.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.9.0 — 2026-09-20
+
+`--deep` now sees two kinds of code it was previously blind to, and `update` stops giving the wrong
+answer to anyone who installed the tool outside the .NET tool system.
+
+**If you gate CI on `--deep`, read the first two sections before upgrading** — both make analyzers see
+more of your code, so finding counts can rise. That is the fix working, not a regression, but it is a
+change you should meet deliberately rather than in a failing build.
+
+### `--deep` now defines your preprocessor symbols
+
+Analyzers under `--deep` were handed every source file with **no preprocessor symbols defined at all**.
+So every `#if DEBUG` region was invisible, and — the direction that catches people out — every `#else`
+branch that a real build *excludes* was the branch being analysed. Two halves of this tool disagreed
+about which code existed: the formatter and native lint have always evaluated per-project symbols,
+`--deep` never did.
+
+Symbols are now derived per project, the way the rest of the tool derives them: `DefineConstants`
+through `Directory.Build.props`/`.targets` and any imports, plus `DEBUG`/`TRACE`, plus the SDK's
+implicit target-framework chain (`NET8_0`, `NET8_0_OR_GREATER`, `NETSTANDARD2_0`, and so on).
+
+Verified against a real build rather than against ourselves: on a fixture where `dotnet build -c Debug`
+reports a diagnostic at lines 24, 33 and 40, `--deep` now reports exactly 24, 33 and 40. Previously it
+reported line 26 — the `#else` branch the compiler never sees.
+
+- **Expect movement on any project with `#if` regions.** Findings inside a live `#if` appear for the
+  first time; findings inside a dead `#else` correctly disappear.
+- **Multi-target projects analyse the first target framework only.** Other legs' `#if` branches remain
+  invisible. That is a stated limit, not an implied one.
+- `DOTNET_FAST_DEEP_NO_SYMBOLS=1` restores the old behaviour if you need to stage the change.
+
+### `--deep` now binds types from your project references
+
+Types coming from a `ProjectReference` were unresolved, so any analyzer that needed them quietly
+skipped the code using them. A type inheriting from a base class in a sibling project simply did not
+look like what it was.
+
+Verified the same way: on a fixture where a real build reports two `CA1032` diagnostics, `--deep`
+now reports the same two. Remove the sibling's build output and it reports none; restore it and the
+two come back.
+
+Two things worth knowing, both measured rather than predicted:
+
+- **The binding needs the sibling project to have been built**, and it is skipped when the sibling's
+  sources are newer than its output. A fresh `git clone` can leave source timestamps newer than
+  committed build output, so on such a checkout this stays inactive until you build. The direction is
+  safe — it withholds rather than binding against a stale assembly — but it means the improvement can
+  be silently absent.
+- **The real-world effect may be nothing at all.** On a large multi-project solution the finding set
+  was byte-identical before and after (33 findings either way). The fixture proves the mechanism; your
+  repository may see no change.
+
+### `update` no longer tells a winget user to run `dotnet tool update`
+
+`update` recognised two kinds of install: manifest-pinned, and global .NET tool. Anything else fell
+through to "global", so a copy installed outside the .NET tool system was told to run
+`dotnet tool update --global`. That either fails, or succeeds and installs a **second** copy alongside
+the first, after which two package managers each maintain a different binary on your `PATH` and the
+tool reports success.
+
+A copy running from a winget install directory is now recognised as such and told `winget upgrade`.
+Detection is anchored on the directories winget actually installs into, so a repository that merely
+happens to live at a path like `C:\src\winget\packages` is not mistaken for one.
+
+New flag: **`update --explain-install`** prints how the running copy was installed and what evidence
+led to that conclusion — useful when a CI log needs to say which install path it is on.
+
+Manifest-pinned and global installs are unchanged, byte for byte.
+
+### Also in this release
+
+- The deep-parity comparison follows Roslynator 5.0's renamed rule ids, so an empty `else` is compared
+  against the successor id upstream now reports rather than the one it used to.
+- Test-harness correctness: suites that claimed to be hermetic were, on Windows, reaching the real
+  .NET SDK instead of the stub they thought they were using. They now genuinely intercept, which means
+  the build-cache and test-plan suites test what they claim to.
 
 ## 1.8.1 — 2026-09-18
 

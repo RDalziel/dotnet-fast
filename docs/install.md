@@ -299,7 +299,10 @@ deliberately not claimed.
 ## Update
 
 `dotnet-fast update` (new in 0.306.0) works out how your copy was installed and runs the matching
-`dotnet tool update` command, so you never have to pick between the manifest form and the global form:
+update command, so you never have to pick between the manifest form and the global form. Copies
+installed from the Windows Package Manager (winget) are also recognised, and are updated with
+`winget upgrade` rather than `dotnet tool update` — winget manages its own packages, and the two must
+never fight over the same binary.
 
 ```bash
 dotnet dotnet-fast update --check       # report only; changes nothing
@@ -331,6 +334,17 @@ than `--version` because the latter is the binary's own version flag.
 `--exit-code-on-outdated` makes it a pipeline check: non-zero when a newer version exists, and nothing
 is modified (it implies `--check`). **`update` is the only command that checks for a new version** —
 nothing else phones home to see whether you are current, on any code path.
+
+`--explain-install` prints how your copy's install was detected — a manifest path, winget, or "no
+positive signal" — and exits without touching anything or the network. Detection only ever adds a
+provenance on affirmative evidence, so a plain downloaded exe with none of it is reported honestly as
+undetectable rather than guessed at; use `--explain-install` when you need to know for sure.
+
+If you install `dotnet-fast` via winget, note the update cadence: winget carries **minor and major**
+releases only — patches ship to NuGet first and reach winget with the next minor release. NuGet
+(`RDLL.dotnet-fast`) is the always-current channel; a winget copy reporting "outdated" against a
+patch-only NuGet release is cadence, not a stalled project, and `winget upgrade` correctly does nothing
+until the next minor ships.
 
 That is a narrower statement than "the tool makes no network calls", and the difference matters if you
 are auditing CI egress: `build` and `cache` talk to the remote build cache (Azure Blob Storage) when
