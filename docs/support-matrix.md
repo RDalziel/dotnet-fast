@@ -17,33 +17,30 @@ unsupported until a release note says otherwise.
 
 ## Platform
 
-**Windows x64 is the only supported platform, and the only one anything ships for.**
+**Windows x64 is the verified platform. Linux x64 ships a binary but is not yet verified. macOS has
+nothing.**
 
 - **Tested — Windows x64.** Every release is built, packaged, and verified there: the test suite, the
   CLI-contract goldens and the differential parity fixtures against the real `dotnet format` run before
   shipping, the heavier whole-repository sweeps run for formatter changes
   ([which gate runs when](releasing.md#the-gates-a-release-passes-before-it-is-tagged)), and the
   release automation (build hygiene, test gate, pack, install smoke test, publish) runs on a Windows
-  x64 machine. There is no non-Windows job anywhere in that pipeline.
+  x64 machine.
 - **What actually ships.** The `RDLL.dotnet-fast` NuGet package is a *portable* .NET tool
-  (`tools/net10.0/any/`), but the tool itself is a native binary that the managed entry point launches,
-  and the package carries that binary for **`win-x64` only** (`tools/net10.0/any/runtimes/win-x64/native/`)
-  — the `--deep` Roslyn sidecar included. No other runtime identifier is published. Each release also
-  attaches a standalone `dotnet-fast-win-x64.exe` and its `.sha256`, checksummed but unsigned — NuGet
-  is still the recommended channel (see [security.md](security.md#the-standalone-binary)).
-- **Linux and macOS do not work today** — a stronger statement than "untested", and worth stating
-  plainly because the install step gives no warning. `dotnet tool install -g RDLL.dotnet-fast`
-  **succeeds** on Linux or macOS: NuGet sees a portable .NET tool and installs it. The first run then
-  fails with `dotnet-fast native binary was not found under '<tool directory>'` and exit code 1,
-  because there is no Linux or macOS binary inside the package. Since no published artifact runs on
-  those platforms, there is no "unsupported but working anyway" path to fall back on.
-- **Never exercised.** No CI job, release step, or verification suite has ever built or run the tool
-  for a non-Windows target. So beyond "the shipped package cannot run there", no claim is made about
-  how it would behave if it were built for one: that is unvalidated — not known-good, and not
-  known-bad either.
-- **1.x plan.** linux-x64 first — produce and publish a per-RID binary, then put the same parity and
-  corpus verification on a Linux runner — and macOS after it. A platform is supported when a release
-  note says so, not before.
+  (`tools/net10.0/any/`), but the tool itself is a native binary that the managed entry point launches.
+  The package carries that binary for **`win-x64`** and **`linux-x64`**
+  (`tools/net10.0/any/runtimes/<rid>/native/`), each with the `--deep` Roslyn sidecar. Each release
+  also attaches a standalone `dotnet-fast-win-x64.exe` and its `.sha256`, checksummed but unsigned —
+  NuGet is still the recommended channel (see [security.md](security.md#the-standalone-binary)).
+- **Linux x64 — ships, not yet verified.** The binary is a static `x86_64-unknown-linux-musl` build,
+  cross-compiled on the Windows release machine, so it needs no particular glibc and runs in
+  runtime-only container images. The test suite, the parity fixtures and the corpus sweeps have not
+  yet run on Linux, so no claim is made that its output matches Windows byte for byte.
+- **macOS does not work today.** `dotnet tool install -g RDLL.dotnet-fast` **succeeds** there, because
+  NuGet sees a portable .NET tool, but the first run fails with
+  `dotnet-fast native binary was not found under '<tool directory>'` and exit code 1.
+- **1.x plan.** Put the same parity and corpus verification on a Linux runner, then macOS. A platform
+  is supported when a release note says so, not before.
 
 ## Formatter scope
 

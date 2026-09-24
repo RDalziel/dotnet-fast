@@ -26,7 +26,7 @@ handling on its own is `166`: treat it as "nothing to do", or a no-op change tur
 dotnet tool install -g RDLL.dotnet-fast
 ```
 
-**Windows x64 only** — see [install.md](install.md). To keep a parallel test matrix from paying a
+**Windows x64 and Linux x64** — see [install.md](install.md). To keep a parallel test matrix from paying a
 tool restore on every agent, install once into a directory and cache it:
 
 ```bash

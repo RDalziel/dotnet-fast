@@ -19,9 +19,9 @@ dotnet tool install -g RDLL.dotnet-fast
 dotnet tool update  -g RDLL.dotnet-fast   # already installed? update to the latest
 ```
 
-**Windows x64 only, and the .NET 10 SDK is a hard floor.** The install *succeeds* on Linux and macOS —
-it is a portable .NET tool package — but the first run fails, because only a `win-x64` native binary
-ships. Prerequisites, the repo-pinned manifest form, verifying the download, updating and uninstalling:
+**Windows x64 and Linux x64, and the .NET 10 SDK is a hard floor.** Windows x64 is the verified
+platform. Linux x64 ships as a static binary but is not yet under the release parity gates, and macOS
+has no binary: the install *succeeds* there, but the first run fails. Prerequisites, the repo-pinned manifest form, verifying the download, updating and uninstalling:
 [install.md](https://github.com/RDalziel/dotnet-fast/blob/main/docs/install.md).
 
 ## First run

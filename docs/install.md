@@ -8,7 +8,7 @@ the sample working directory renamed to `C:\src\hello`. Nothing here is illustra
 
 | | Requirement |
 |---|---|
-| OS / architecture | **Windows x64.** Nothing else works — see [support-matrix.md](support-matrix.md#platform). |
+| OS / architecture | **Windows x64**, or **Linux x64** (static binary, not yet under the parity gates). macOS does not work — see [support-matrix.md](support-matrix.md#platform). |
 | To install | **.NET 10 SDK.** Verified on `10.0.110` and `10.0.302`. |
 | To run | The .NET 10 runtime that comes with that SDK. |
 | For `lint --deep` only | A restored project (`dotnet restore` or a prior build). |
@@ -394,10 +394,16 @@ formatted. Both are safe to delete (the next run just re-does the work), both be
 **`Settings file 'DotnetToolSettings.xml' was not found in the package`** — you are on an SDK older
 than .NET 10. See [Prerequisites](#prerequisites).
 
-**`dotnet-fast native binary was not found under '<tool directory>'`, exit code 1** — you are on Linux
-or macOS. The install succeeds there because NuGet sees a portable .NET tool, but the package carries
-a `win-x64` binary only. This is a documented limitation, not a bug:
+**`dotnet-fast native binary was not found under '<tool directory>'`, exit code 1** — you are on macOS,
+on a non-x64 architecture, or on a version older than the first to ship `linux-x64`. The install
+succeeds there because NuGet sees a portable .NET tool, but the package carries `win-x64` and
+`linux-x64` binaries only. This is a documented limitation, not a bug:
 [support-matrix.md](support-matrix.md#platform).
+
+**`failed to start dotnet-fast native binary at '<path>': Permission denied`** — Linux, with the tool
+installed by a different user (typically `root` into a shared `--tool-path`). NuGet does not keep the
+execute bit, and the launcher can only restore it when it owns the file. Run `dotnet-fast --version`
+once as the installing user, or `chmod +x` the binary under `.store/rdll.dotnet-fast/`.
 
 **The banner reads `dotnet-fast 1.0.0 (manifest pins 1.0.0-rc.1 at …)`** — the binary that ran is not
 the version the repository pins. Usually a global install is shadowing the manifest, or

@@ -2,9 +2,35 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.9.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.0 — 2026-09-24
+
+**Linux x64 support.** The NuGet package now runs on Linux.
+
+Until this release the package installed on Linux but could not start there: it carried only the Windows
+binary, so `dotnet-fast` exited with "native binary was not found". If you run the tool in a Linux CI agent
+or container, this is the release that makes it work.
+
+- The package now ships a **linux-x64** native binary alongside the Windows one, and the launcher picks the
+  right one for the machine it runs on.
+- The Linux binary is **statically linked** (musl), so it has no dependency on the system's C library
+  version. It runs on any reasonably modern x64 Linux, including slim container images.
+- NuGet drops Unix file permissions when it extracts a package, so the launcher restores the binary's
+  execute permission before its first run. Nothing to configure.
+
+Checked before release on the Ubuntu 24.04 (noble) .NET 10 SDK image, installed as a global tool and run
+both as root and as an ordinary user: `format`, `format --verify-no-changes`, `lint`, `metrics` and
+`affected` all behave as they do on Windows.
+
+**What is not yet covered on Linux:** the parity and real-world validation suites that gate every release
+still run on Windows only, so Linux behaviour is checked by the smoke tests above rather than by the full
+corpus. `--deep` has not been validated on Linux. macOS and Arm64 Linux are not supported.
+
+Nothing changes on Windows: the Windows binary, every command, flag, output and exit code are identical to
+1.9.0.
 
 ## 1.9.0 — 2026-09-20
 

@@ -130,11 +130,11 @@ dotnet tool update  -g RDLL.dotnet-fast   # update to the latest</pre>
 dotnet-fast lint --fix path/to/App.sln    # apply every safe fix in one pass
 dotnet-fast affected --ci                 # projects to build/test for this change
 dotnet-fast test-plan --shards 8 --format matrix .</pre>
-    <p class="muted"><strong>Windows x64 only.</strong> That is the platform every release is built and
-      verified on, and the only one a binary ships for. <strong>Linux and macOS do not work today</strong>:
-      the install command above succeeds there (it is a portable .NET tool package), but the first run
-      fails with <code>dotnet-fast native binary was not found</code> and exit&nbsp;1, because the package
-      carries a <code>win-x64</code> native binary only. linux-x64 is the first target for the 1.x line.
+    <p class="muted"><strong>Windows x64 and Linux x64.</strong> Windows x64 is the platform every
+      release is built and verified on. Linux x64 ships a static binary that is not yet under the release
+      parity gates. <strong>macOS does not work today</strong>: the install command above succeeds there
+      (it is a portable .NET tool package), but the first run fails with
+      <code>dotnet-fast native binary was not found</code> and exit&nbsp;1.
       <a href="https://github.com/RDalziel/dotnet-fast/blob/main/docs/support-matrix.md#platform">Platform detail</a>.</p>
     <p class="muted">Needs the <strong>.NET&nbsp;10 SDK</strong> — on .NET&nbsp;9 the install fails with a
       message that does not say why. The
