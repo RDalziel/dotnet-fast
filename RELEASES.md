@@ -8,19 +8,17 @@ NuGet package — is a git-history pointer, not full notes, in
 
 ## 1.10.1 — 2026-09-25
 
-### Reverted: `1.10.0`'s collection-expression `[ … ]` interior-spacing fix (#281)
+### Fixed: an initializer continuation that starts with `=` keeps its indentation (#281)
 
-`1.10.0` shipped a fix that kept a multi-line C# 12 collection expression's `[ … ]` interior spacing
-untouched, matching `dotnet format`'s own alignment-preserving behavior (seen on Polly's
-`ResiliencePipelineRegistry.cs`). Further testing found it also misreads a list pattern, a
-positional pattern, or a property pattern's `[ … ]` as a collection expression whenever it follows a
-`,`, `(`, `{`, or `:` — for example `a is [[1], [\n 2,   3\n]]` or `b is { Items: [\n 1,   2\n] }` —
-and now leaves *those* multi-space runs untouched too, where `dotnet format` collapses them. That's
-new drift from the real tool, so the fix has been reverted while a version that can tell a collection
-expression apart from a pattern is worked out. Collection-expression `[ … ]` interior spacing is back
-to matching `1.9.0`: it no longer preserves the Polly/Dapper alignment `1.10.0` fixed, but it no
-longer diverges on list/positional/property patterns either. Whitespace only — no string, token, or
-build-output value changes either way.
+A property or field initializer whose continuation line begins with `=` (for example a `Regex` built
+across several lines, as in Dapper's `CompiledRegex.cs`) was snapped back to member depth. `dotnet format`
+keeps the author's indentation there, so a repository gating on both tools disagreed. It now matches.
+
+Not in this release: a companion change for multi-line collection-expression `[ … ]` spacing (seen on
+Polly's `ResiliencePipelineRegistry.cs`) was developed after `1.10.0` but withdrawn before release,
+because it also misread list, positional and property patterns and left spacing that `dotnet format`
+collapses. No released version ever carried it: collection-expression spacing behaves exactly as in
+`1.10.0`. It remains open in #281.
 
 ### Fixed: the build cache's restored NuGet state was not actually portable across agents (#241)
 
