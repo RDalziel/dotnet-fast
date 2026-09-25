@@ -12,6 +12,7 @@ overstated supply-chain claim is worse than an honest gap.
 |---|---|---|---|
 | NuGet package `RDLL.dotnet-fast` | Package content hash, enforced by the NuGet client | **nuget.org repository signature** (Microsoft, DigiCert chain, RFC-3161 timestamped) | None published |
 | `dotnet-fast-win-x64.exe` (GitHub release asset) | SHA-256 published beside it as `.sha256` | None | None published |
+| `dotnet-fast-linux-x64` (GitHub release asset) | SHA-256 published beside it as `.sha256` | None | None published |
 
 **The NuGet package is the artifact with a signature**, and everything in that column comes from
 nuget.org rather than from us: there is **no author signature** and **no build attestation**. Since
@@ -117,8 +118,11 @@ That constrains *who* can publish. It does not, on its own, attest to what was b
 ## The standalone binary
 
 Since `1.2.0`, each release attaches a self-contained `dotnet-fast-win-x64.exe` and a matching
-`dotnet-fast-win-x64.exe.sha256` to its GitHub release on this repository. Both are built from the
-commit the version was tagged at. Check the download against the published digest before running it:
+`dotnet-fast-win-x64.exe.sha256` to its GitHub release on this repository. Since `1.10.1`, it also
+attaches a static `dotnet-fast-linux-x64` (with its own `.sha256`) — the same binary the
+`RDLL.dotnet-fast` NuGet package carries under `runtimes/linux-x64/native/`. Every asset is built
+from the commit the version was tagged at. Check the download against the published digest before
+running it:
 
 ```powershell
 (Get-FileHash .\dotnet-fast-win-x64.exe -Algorithm SHA256).Hash
@@ -127,13 +131,14 @@ Get-Content .\dotnet-fast-win-x64.exe.sha256      # compare the two, case-insens
 
 ```bash
 sha256sum -c dotnet-fast-win-x64.exe.sha256       # if you have coreutils
+sha256sum -c dotnet-fast-linux-x64.sha256         # same, for the linux-x64 asset
 ```
 
 **Be precise about what that proves.** A checksum published next to the file it describes detects
 *accidental* corruption — a truncated download, a bad proxy, a flaky mirror. It is **not** a
-signature: anyone able to replace the binary on the release could replace the checksum beside it. The
-binary carries **no Authenticode signature** and no build attestation, so Windows SmartScreen may warn
-on first run.
+signature: anyone able to replace the binary on the release could replace the checksum beside it.
+Neither binary carries an Authenticode signature or a build attestation, so Windows SmartScreen may
+warn on the win-x64 asset's first run.
 
 **The NuGet package remains the recommended channel**, precisely because its signature is issued by a
 third party rather than by us. If what you want is a CI agent that doesn't pay a `dotnet tool restore`

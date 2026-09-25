@@ -37,9 +37,10 @@ stable line until the final version ships. Installing one is always explicit —
 - **A plain-English entry in [RELEASES.md](../RELEASES.md)** for anything user-visible, with anything
   action-required stated first.
 - **Updated documentation on this site** when the command surface or the lint rule catalog changed.
-- **A self-contained `dotnet-fast-win-x64.exe` and its `.sha256`**, built from the same commit and
-  attached to that version's GitHub release on this repository. Since `1.2.0` this is a published
-  artifact rather than an internal one.
+- **Self-contained `dotnet-fast-win-x64.exe` and `dotnet-fast-linux-x64` binaries (each with its own
+  `.sha256`)**, built from the same commit and attached to that version's GitHub release on this
+  repository. Since `1.2.0` win-x64 is a published artifact rather than an internal one; since
+  `1.10.1` linux-x64 joins it.
 - **A tag on these docs.** Each release commits the documentation as it stood for that version and
   tags it `vX.Y.Z`, so you can read what a page said at the version you are running rather than only
   its current state.

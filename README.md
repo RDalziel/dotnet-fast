@@ -110,7 +110,8 @@ separate repository; you don't need it to use the tool.
 
 Plain-English notes for each version:
 **[RELEASES.md](https://github.com/RDalziel/dotnet-fast/blob/main/RELEASES.md)**. Each release attaches
-`dotnet-fast-win-x64.exe` and a matching `.sha256`, and each version of these docs is tagged `vX.Y.Z`.
+`dotnet-fast-win-x64.exe` and `dotnet-fast-linux-x64` (each with a matching `.sha256`), and each version
+of these docs is tagged `vX.Y.Z`.
 
 ## License
 

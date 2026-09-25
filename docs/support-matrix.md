@@ -30,8 +30,9 @@ nothing.**
   (`tools/net10.0/any/`), but the tool itself is a native binary that the managed entry point launches.
   The package carries that binary for **`win-x64`** and **`linux-x64`**
   (`tools/net10.0/any/runtimes/<rid>/native/`), each with the `--deep` Roslyn sidecar. Each release
-  also attaches a standalone `dotnet-fast-win-x64.exe` and its `.sha256`, checksummed but unsigned —
-  NuGet is still the recommended channel (see [security.md](security.md#the-standalone-binary)).
+  also attaches standalone `dotnet-fast-win-x64.exe` and `dotnet-fast-linux-x64` binaries (with their
+  `.sha256`s), checksummed but unsigned — NuGet is still the recommended channel (see
+  [security.md](security.md#the-standalone-binary)).
 - **Linux x64 — ships, not yet verified.** The binary is a static `x86_64-unknown-linux-musl` build,
   cross-compiled on the Windows release machine, so it needs no particular glibc and runs in
   runtime-only container images. The test suite, the parity fixtures and the corpus sweeps have not

@@ -2,9 +2,171 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.0`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.1`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.1 — 2026-09-25
+
+### Reverted: `1.10.0`'s collection-expression `[ … ]` interior-spacing fix (#281)
+
+`1.10.0` shipped a fix that kept a multi-line C# 12 collection expression's `[ … ]` interior spacing
+untouched, matching `dotnet format`'s own alignment-preserving behavior (seen on Polly's
+`ResiliencePipelineRegistry.cs`). Further testing found it also misreads a list pattern, a
+positional pattern, or a property pattern's `[ … ]` as a collection expression whenever it follows a
+`,`, `(`, `{`, or `:` — for example `a is [[1], [\n 2,   3\n]]` or `b is { Items: [\n 1,   2\n] }` —
+and now leaves *those* multi-space runs untouched too, where `dotnet format` collapses them. That's
+new drift from the real tool, so the fix has been reverted while a version that can tell a collection
+expression apart from a pattern is worked out. Collection-expression `[ … ]` interior spacing is back
+to matching `1.9.0`: it no longer preserves the Polly/Dapper alignment `1.10.0` fixed, but it no
+longer diverges on list/positional/property patterns either. Whitespace only — no string, token, or
+build-output value changes either way.
+
+### Fixed: the build cache's restored NuGet state was not actually portable across agents (#241)
+
+The build cache archived `project.assets.json` and the generated `g.props` unchanged and called the
+result portable across machines. It wasn't: `project.assets.json` bakes the producing agent's literal
+absolute package-folder path into fields the SDK reads directly, so extracting a producer's `obj/`
+onto a consumer with a different resolved package root made `dotnet build --no-restore` fail with
+`NETSDK1064` — a false "already restored" that turned into a hard build failure instead of a cache
+miss. The producer now records its package root as a small sidecar alongside the archive (the
+archived files themselves stay byte-identical) and the consumer rewrites just that one root on
+extraction when its own differs, or withholds the restore-state files entirely when it can't prove the
+rewrite is safe — withholding just means a real `dotnet restore` runs, not a new silent no-op. A
+follow-up fix closes a gap in the first one: a producer with a NuGet.config fallback packages folder
+configured was treated as "unknown" and had its restore state withheld even on a matching agent;
+only the SDK's own first (resolved) `packageFolders` entry is recorded and rewritten, any fallback
+folder is left exactly as archived. **The build-cache format version moved (v2 → v3)**, so every
+consumer does one cold rebuild on its next cache use — same as any prior cache-format change.
+
+### GitHub releases now attach the linux-x64 binary too (#301)
+
+Since `1.10.0`, the NuGet package carries a `linux-x64` native binary alongside `win-x64`. The GitHub
+release (both here and on the public mirror) only ever attached the Windows binary, so anyone fetching
+the standalone executable directly — rather than through the .NET tool — got Windows only, with no
+way to get the Linux build outside of NuGet. Each release now attaches `dotnet-fast-linux-x64` and its
+`.sha256` next to the existing `dotnet-fast-win-x64.exe` and `.sha256`; nothing about the Windows asset
+changed. See [security.md](docs/security.md#the-standalone-binary) for how to check it, and
+[support-matrix.md](docs/support-matrix.md#platform) for what "ships" vs. "verified" means for Linux.
+
+### Fixed: deeply nested single-line interpolation could crash instead of erroring (#297)
+
+A single-line interpolated string nested roughly 200+ levels deep (`$"{$"{$"{…}"}"}"`) could overflow
+the stack and crash the process instead of producing a clean error. Three separate passes each followed
+that nesting with no depth limit: the whitespace spacer, the explicit-tuple-name rewrite (IDE0033), and
+the deconstructed-variable-declaration rewrite (IDE0042). All three now share the same nesting cap the
+string-literal scanners already used (issue #294): past 16 levels deep, each pass does the conservative,
+source-preserving thing instead of recursing again — the whitespace spacer leaves that portion of the
+hole unformatted, the tuple-name rewrite leaves a `.ItemN` access unrenamed, and the deconstruction
+rewrite withholds the whole declaration rather than risk leaving a renamed reference next to an
+unrenamed one (which would not compile).
+
+A crash never left a source file half-written — every write path goes through an atomic
+write-then-rename — but it could leave stray lock/temp files behind and, on the very next run, that
+stale lock could make the tool wait 30 seconds and then fail. That's a separate, already-tracked
+follow-up, not something this fix changes.
+
+**Known, deliberate gap:** real `dotnet format` keeps spacing operators inside interpolation holes
+past 16 levels of nesting; this tool now stops at 16 and leaves anything deeper as written. That gap
+only exists between roughly level 17 and where the tool used to crash — no real codebase nests
+interpolation that deep, and leaving it unformatted is safer than the alternative.
+
+### Fixed: the format/lint cache could mark unchecked content "clean" (#298)
+
+Two distinct ways a cache entry could describe content nobody actually checked:
+
+- The cache-freshness stat used to be taken fresh at the very end of a file's run, after its content
+  was already judged (and, for a rewrite, written). An edit landing in that narrow window could have
+  its size/timestamp recorded as "clean" without ever being read. The entry is now built from the same
+  file handle the read itself already used — or, for a rewrite, from a reopen-and-read-back that proves
+  the recorded bytes are the ones just written.
+- `lint --staged`'s changed-line scoping (the pre-commit-hook shape) could have its narrower "clean
+  within the staged lines" result recorded as an ordinary whole-file cache entry. A later, unscoped
+  `lint` run then reused that entry and reported no findings on a file that still had one outside the
+  staged lines — most likely to bite a pre-commit `lint --staged` followed by a plain local `lint`.
+  Scoped runs no longer write a whole-file entry; they still correctly reuse one an earlier unscoped run
+  wrote.
+
+The on-disk cache format version moved so any entry a previous build already got wrong is discarded
+automatically — the next run of any command just re-verifies each affected file once, with no change to
+any command's flags, output shape or exit codes.
+
+Fixes three ways formatting could change the **value** of a string literal. Each compiled cleanly and
+passed a whitespace-insensitive diff, so nothing warned you. If your code keeps meaningful text in
+multi-line strings — prompts, templates, SQL, JSON — take this release.
+
+### Style and cleanup rules no longer rewrite the inside of multi-line strings
+
+The style and analyzer passes treated the lines of a multi-line raw (`"""`) or verbatim (`@"…"`)
+string as C# code:
+
+- **Consecutive blank lines inside the string were collapsed** by the blank-line rules.
+- Code-shaped content inside a string was rewritten — `string s = "x";` became `var s`, and a
+  single-line `if` gained braces.
+- Converting to file-scoped namespaces **de-indented `@"…"` content**, removing leading spaces that are
+  part of the value.
+
+These passes now leave literal interiors untouched. The whitespace pass already did; the others didn't.
+
+### Two string-boundary bugs that treated string content as code
+
+- **A raw string nested in an interpolation hole of another raw string** (`$$"""…{{ """…""" }}…"""`)
+  could make the tool think the outer string ended early, and format the rest of it as code — usually
+  a build break.
+- **`$@"…"` strings with a multi-line interpolation hole** had the text after the hole re-indented,
+  changing the value. Output now matches `dotnet format` exactly.
+
+### `remove unused private members`/`remove unused usings` no longer delete something still referenced
+
+The same literal-hiding fix above had a second-order effect this release introduced: once a multi-line
+or raw interpolated string's interior was hidden from the style passes, a private member or `using`
+referenced only from *inside* one of those hidden interpolation holes (`$"""…{Helper()}…"""`,
+multi-line `$@"…{Helper()}…"`) looked unreferenced and was deleted — a build break, not a formatting
+change. Fixed: both rules now see that hidden reference again.
+
+Separately (issue #280): a private member referenced only inside a **disabled** `#if` branch (one whose
+symbol your build doesn't currently define) is also no longer deleted. `dotnet format` genuinely does
+delete it — Roslyn never parses a disabled branch at all — so this is a deliberate, narrow difference
+from its behavior, taken because the alternative is a build break the moment someone defines that symbol
+for another target framework or configuration. It only withholds the deletion when the member's own name
+appears inside the disabled text; an `#if` elsewhere in the file that never mentions the member is
+unaffected.
+
+### Fixed: `prefer readonly field` no longer corrupts expression-bodied methods and properties
+
+With `dotnet_style_readonly_field` on, an expression-bodied private method or property (`private static
+int Helper() => 1;`, `private int X => _field;`) could be mistaken for a field declaration and get
+`readonly` inserted into its signature — `private static readonly int Helper() => 1;`, which doesn't
+compile (`CS0106`). `dotnet format` never does this. Fixed: the candidate scan now checks what follows
+the name it found, and backs off when that's a parameter list or an arrow, so only real fields —
+including ones with a lambda initializer — are still fixed.
+
+### Unchanged, and why
+
+A raw string's **opening** `"""` can still move when its member is re-indented. That is what
+`dotnet format` does too, and it cannot change the value: C# strips content indentation relative to the
+**closing** delimiter, and that is never moved.
+
+### Fixed: directory discovery ignored `.fsproj`/`.vbproj` at a monorepo root
+
+`lint`/`format`/`doctor`/`bom`'s directory scan only ever counted `.csproj` files when deciding
+whether a directory held one project, several, or none. An `.fsproj` or `.vbproj` sitting there was
+invisible to that check, so a root holding an F# or VB project behaved differently from the same
+shape in C# — and in the worst case, a root `.csproj` next to a root `.fsproj` silently used the
+`.csproj` and dropped the `.fsproj` instead of erroring the way `dotnet format` does on any ambiguous
+project mix (issue #265). The scan now counts `.csproj`, `.fsproj`, and `.vbproj` alike, matching
+`dotnet format`'s own behavior for every workspace-selection shape it was checked against. C#-only
+directories are unaffected — this only changes shapes that previously behaved inconsistently or
+silently dropped a project.
+
+### How this was checked
+
+81 string values across every literal form were compiled and read back at runtime before and after
+`lint --fix`, `format`, `--fix-changed-lines` and repeated runs, on LF and CRLF files. All unchanged.
+
+Three related problems found during that check are tracked separately and are **not** fixed here:
+`--fix-changed-lines` duplicating a line in one specific shape, a bare LF inside a literal in a
+mixed-line-ending file becoming CRLF, and single-line `$@"…"` strings with a string inside a hole.
 
 ## 1.10.0 — 2026-09-24
 
@@ -31,6 +193,7 @@ corpus. `--deep` has not been validated on Linux. macOS and Arm64 Linux are not 
 
 Nothing changes on Windows: the Windows binary, every command, flag, output and exit code are identical to
 1.9.0.
+
 
 ## 1.9.0 — 2026-09-20
 

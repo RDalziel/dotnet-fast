@@ -23,7 +23,28 @@ current directory.
 [`cache`](#cache) · [`insights`](#insights)
 
 **Everything else** — [`hooks`](#hooks) · [`update`](#update) ·
+[Pointing a command at a directory](#pointing-a-command-at-a-directory) ·
 [Version banner](#version-banner) · [Global options](#global-options) · [Exit codes](#exit-codes)
+
+## Pointing a command at a directory
+
+Not every command resolves a bare directory the same way — deliberately:
+
+- `lint`, `format` (and its aliases), `doctor`, and `bom` follow `dotnet format`'s own workspace
+  rules: a directory must hold exactly one solution (`.sln`/`.slnx`/`.slnf`) or exactly one project
+  (`.csproj`/`.fsproj`/`.vbproj`) directly inside it, or the command fails and asks for an explicit
+  `<workspace>` argument. Only when the directory holds neither a direct solution nor a direct
+  project does a recursive scan kick in and walk every project underneath. This matches
+  `dotnet format` exactly, including its error text on an ambiguous root — more than one solution,
+  more than one project, or a solution next to a project.
+- `metrics`, `dead-code`, `dead-dependencies`, and `affected` always walk every project under the
+  directory recursively, however many solutions or projects sit at the top. A monorepo root holding
+  several solutions is exactly what those commands are for.
+
+Making either family match the other would change output or exit codes on shapes pipelines already
+depend on, so this split is kept on purpose rather than "fixed". A `lint`/`format` mode that walks
+every project the way `metrics`/`dead-code` do would need a new, opt-in flag rather than a change to
+today's default.
 
 ## Version banner
 

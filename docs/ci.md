@@ -35,8 +35,9 @@ dotnet tool install RDLL.dotnet-fast --tool-path ./.dotnet-fast
 ```
 
 Key the cache on the pinned version and later jobs skip the install entirely. Each release also
-attaches `dotnet-fast-win-x64.exe` and a matching `.sha256` if you would rather fetch the binary
-directly — though the NuGet path is the one with a signature ([security.md](security.md)).
+attaches `dotnet-fast-win-x64.exe` and `dotnet-fast-linux-x64` (each with a matching `.sha256`) if
+you would rather fetch the binary directly — though the NuGet path is the one with a signature
+([security.md](security.md)).
 
 > `lint --deep` (real Roslyn analyzers) needs the .NET SDK on the agent. The native `lint`,
 > `lint --fix`, `affected`, `metrics` and `dead-code` paths do not.
