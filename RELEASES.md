@@ -8,14 +8,16 @@ NuGet package — is a git-history pointer, not full notes, in
 
 ## 1.10.2 — 2026-09-27
 
-### Fixed: a killed process could leave a write in progress unprotected (#304)
+### Fixed: a killed run no longer blocks the next runs for up to five minutes (#304)
 
-The write lock that keeps two concurrent runs from formatting the same file at once used to guess a
-process was gone once its lock file looked older than 300 seconds, rather than checking whether the
-process actually still held it. On a slow or heavily loaded machine a still-running process could look
-"stale" under that guess, letting a second run take over the lock while the first was still writing,
-with both then able to write the same file. The lock is now tied to a real OS-level file lock
-(`flock`/`LockFileEx`), so ownership is checked directly instead of estimated from a timestamp. A
+The write lock that keeps two concurrent runs from formatting the same file at once was just a file,
+removed when the run finished. A run that was killed, ran out of memory or crashed mid-fix never removed
+it, and the next runs could not tell a dead owner from a live one. They only treated the lock as stale
+once it was more than 300 seconds old. Until then, every run that needed that file waited out its full
+30-second lock budget and then failed. The same age-only rule also meant a lock still held by a live run
+could be taken over once it passed 300 seconds. The lock is now tied to a real OS-level file lock
+(`flock`/`LockFileEx`). The OS releases it the moment the owning process dies, so ownership is checked
+directly instead of estimated from a timestamp. A
 follow-up in the same fix closed a narrower gap it left: two writers could still both take a *newly
 created, not-yet-locked* lock file in the same instant. Known, deliberate residuals: don't run 1.10.1
 and 1.10.2 against the same tree at the same time (1.10.1 never takes the OS lock, so a live 1.10.1
@@ -25,18 +27,19 @@ with a badly skewed clock can still cause extra lock retries (never a double wri
 
 ### Fixed: very deep nesting could overflow the stack instead of reporting cleanly (#305)
 
-`lint` and `metrics` both walk a file's syntax tree recursively. A file nested roughly 3000+ levels deep
-(the kind a generator or a pathological formatter loop can produce, not something anyone writes by
-hand) could overflow the stack and crash instead of failing cleanly. Both now cap the walk and report a
-clean `TOODEEP` finding / `overBudget` result instead of crashing — deep files that were fine before
+`lint` and `metrics` both walk a file's syntax tree recursively. A file nested many thousands of levels
+deep could overflow the stack and crash instead of failing cleanly. The issue's nested-parentheses
+repro crashed a release build at around 10,000–20,000 levels. That's the kind of file a generator or a
+pathological formatter loop can produce, not something anyone writes by hand. Both commands now stop
+walking past 3000 levels and report a clean `TOODEEP` finding / `overBudget` result instead of
+crashing — deep files that were fine before
 this depth still measure exactly as before. A first pass at the cap fired too early and silently
 dropped findings on ordinary, non-pathological files; that's fixed, so normal files are unaffected
 either way. Contract note: a file over the depth cap that previously produced a plain (if slow) `metrics`
 result now gets `overBudget: true` and `lint` exits 1 with `TOODEEP` for that file, which is the
 intended clean failure, not silent success. A separate, pre-existing performance issue — `lint` time
 grows very steeply with ordinary nested blocks (if/lock/try/local functions), independent of this cap,
-and was already present in 1.10.1 — is being tracked and addressed separately; it is not part of this
-fix.
+and was already present in 1.10.1 — is a known, separate problem; it is not part of this fix.
 
 ### Fixed: `lint --fix` could still touch code inside a broken extension/union block (#202)
 
@@ -49,31 +52,35 @@ fixed, and are unchanged from 1.10.1 — see the issue for the list.
 
 ### Fixed: DF0044 could rewrite a `ref` conditional into code that doesn't build (#308)
 
-`lint --fix`'s DF0044 (`?:` operand style) could fold a `ref`-typed ternary lvalue
-(`(cond ? ref a : ref b) = x;`) into a form that fails to build. The fix is now withheld on that
-shape; DF0044 still reports it as a finding, it just doesn't rewrite it. A separate, pre-existing bug
-in the same area — DF0139/SA1022 misreading `(v) + 1` as a cast followed by unary plus and rewriting it
-to `(v) +1` — builds fine and changes nothing behaviorally, is unrelated to this fix, and is being
-tracked separately.
+`lint --fix`'s DF0044 (`?:` operand style) could fold a `ref` conditional such as
+`ref int r = ref (true ? ref v : ref v);` into a form that fails to build (CS1525). The fix is now
+withheld on every `ref` conditional; DF0044 still reports it as a finding, it just doesn't rewrite it.
+Two separate, pre-existing problems found in the same pass are not part of this fix: DF0044 can fold a
+ternary whose arms have different types (`true ? 1 : 2.0`) and change the result's type (#309), and
+DF0139/SA1022 misread `(v) + 1` as a cast followed by unary plus and rewrite it to `(v) +1`. That
+rewrite builds and behaves the same, but `dotnet format whitespace` then puts the space back (#312).
 
 ### Fixed: three more shapes where IDE0005/IDE0032/IDE0044 could break a build (#302)
 
 Following on from the disabled-`#if`-branch work already in earlier releases: a field or `using` only
 referenced from inside a disabled `#if` branch, or only inside a raw/verbatim string interpolation
-hole, could still be wrongly removed or marked `readonly`, breaking the build when that branch was
-turned on. Both shapes are now withheld. A trailing `//` comment on the withheld line could also defeat
-the original #302 protection outright; that's fixed too. Known, not yet fixed: IDE0044 can still mark a
-field `readonly` incorrectly for several other assignment shapes (`Put(out _n)`, `Put(ref _n)`,
-`ref int r = ref _n;`, tuple-deconstruction assignment) both inside disabled branches and, more broadly,
-in ordinary active code — the latter is a separate, more severe defect that predates this fix and needs
-its own issue.
+hole, could still be wrongly removed by IDE0005/IDE0032, breaking the build. Both shapes are now
+withheld. IDE0044 gets the disabled-branch withhold for a field assigned there with `=`, a compound
+assignment or `++`/`--`, so it no longer marks that field `readonly`. A `//` comment before the
+assignment could defeat that IDE0044 check outright; that's fixed too. Known, not yet fixed
+(#311): IDE0044 still marks a field `readonly` when its only writes are `this._n = …`, prefix `--`, a
+tuple-deconstruction target, a `ref`/`out` argument, a `ref` local, or an assignment inside a verbatim
+or raw interpolation hole. This happens in ordinary active code, not only in disabled branches, and it
+breaks the build (CS0191/CS0192). It predates this release and was present in 1.10.1 too.
 
 ### Fixed: `--fix-changed-lines` could duplicate a moved or re-indented line (#292)
 
 A line that moved (or only changed indentation) inside a changed hunk could be written out twice —
 once at its old position and once at its new one. Fixed. A pre-existing, separate nondeterminism in
 plain `lint --fix` across large multi-file runs (also present in 1.10.1) was found while investigating
-this and is being tracked on its own; it isn't caused or changed by this fix.
+this. It isn't caused or changed by this fix. Also separate and not fixed here: `--staged
+--fix-changed-lines` can compute its line scope from the wrong line numbers when a file is only
+partially staged (#310).
 
 ### Fixed: a CST guard for collection expressions vs. patterns, without the regression 1.10.1 pulled back (#281)
 
@@ -81,11 +88,14 @@ this and is being tracked on its own; it isn't caused or changed by this fix.
 telling a multi-line collection expression `[ … ]` apart from a list/positional/property pattern —
 after it turned out to misread real patterns. That guard is back, built on the actual syntax tree
 instead of guessing from brackets, and a regression it introduced against 1.10.1's close-brace
-splitting has been fixed alongside it. Known leftovers, all pre-existing behavior (byte-identical to
-1.10.1, not new in this release): a handful of collection-expression-vs-pattern combinations that still
-collapse spacing the oracle keeps (list-pattern-plus-`when`, some ternary/`case`/`is` bracket shapes),
-and a couple of layout differences (splitting `new X { Items = [` onto its own line, an `} else {}`
-inside a lambda) that `dotnet format` also handles differently from us. See the issue for the full list.
+splitting has been fixed alongside it. Known leftovers, byte-identical to 1.10.1 and not new in this
+release: a few collection expressions next to a list pattern still have multi-space runs collapsed
+where `dotnet format` keeps them. These are a list pattern followed by `&&`, one inside a ternary, and
+one followed by a `when` clause with a collection argument. There are also some layout differences
+from `dotnet format`: splitting `new X { Items = [` onto its own line, and `} else {` inside a lambda.
+One line shape does change from 1.10.1. A literal tab inside a collection expression's interior is now
+kept verbatim, where `dotnet format` turns it into spaces. 1.10.1 was also wrong here, in a different
+way: it collapsed the run but kept a leading tab. See the issue for the full list.
 
 ## 1.10.1 — 2026-09-25
 
