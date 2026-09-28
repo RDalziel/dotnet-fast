@@ -98,7 +98,7 @@ against real open-source repositories before it ships.
 | `DF0041` | `a - a` (0), `a / a` (1), `a % a` (0), `a ^ a` (0), `a & a` (a), `a | a` (a) — a constant or redundant result, almost always a typo. `+`/`*` and non-simple operands are not matched. | report-only |
 | `DF0042` | `if (a) … else if (a) …` repeats a condition in one if/else-if chain, so the later branch is unreachable. Conditions compared textually. | report-only |
 | `DF0043` | `$"text"` with no `{…}` interpolations is an ordinary string — the `$` is redundant. Skipped when the content contains a brace (escaping would change). | fix¹ |
-| `DF0044` | `true ? a : b` / `false ? a : b` has a constant condition, so one branch is always taken and the other dead. The ternary analogue of DF0031. | fix |
+| `DF0044` | `true ? a : b` / `false ? a : b` has a constant condition, so one branch is always taken and the other dead. The ternary analogue of DF0031. | fix⁴ |
 | `DF0045` | `new SomeException();` as a statement constructs an exception and discards it — almost always a missing `throw`. Matches a discarded creation of a type ending in `Exception`. | report-only |
 | `DF0046` | `while (false) { … }` never executes its body. The `while (true)` idiom and `do … while (false)` are different constructs and not matched. | report-only |
 | `DF0047` | `!(a == b)` / `!(a != b)` negates an equality test with a direct opposite (`a != b` / `a == b`). The `!!` case is DF0015. | fix |
@@ -222,6 +222,13 @@ side-effect-free, since they drop its evaluation — otherwise report-only.
 ³ DF0023 / DF0058 / DF0059 delete the whole line only when the dead statement is alone on it (just
 indentation before, whitespace/newline after); if it shares its line with other code or a comment it
 stays report-only, to avoid leaving a fragment.
+
+⁴ DF0044 is fixed only when both arms are literals of a provably identical type (e.g. `1 : 2`, `1.5f :
+2F`, `"a"u8 : "b"u8`) — the dead arm still takes part in deciding the whole expression's type (best
+common type, nullable lifting, null/default/throw typing, overload resolution), so folding an arm pair
+whose types differ, or where either arm isn't a bare literal (an identifier, a call, `null`, `default`,
+`throw`, a cast, a unary `-`, ...), can silently change what the expression evaluates to or its type.
+Those stay report-only, alongside the pre-existing `ref` conditional case (`true ? ref a : ref b`).
 
 ## F# formatting hygiene (`FSH0001`–`FSH0004`)
 

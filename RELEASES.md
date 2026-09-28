@@ -2,9 +2,88 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.2`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.3`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.3 — 2026-09-28
+
+### Fixed: keyword-operand parens/brackets losing their space, `case [1]:` included (#306, #307, #313)
+
+`WHITESPACE`/SA1008/SA1010/SA1011 disagreed with `dotnet format` on a parenthesized or bracketed
+operand right after a pattern/statement keyword — `params (T, T)[]`, `ref (x)`, `is (0, 0)`,
+`as (int, int)?`, `case [1]:`, `o is (int) or (long)`, `ref (arr)[0]`, `foreach (var x in (xs)[0..1])`
+and several nested-pattern-comma shapes all got mis-spaced, and `lint --fix` could rewrite
+oracle-clean code into a shape `dotnet format whitespace` then rejected. The fix reads the syntax
+tree instead of guessing from token text, so a method literally named `scoped` or a variable named
+`and` is never mistaken for the keyword. A case label's own `[` / `]` — `case [.. var r]:`, a list
+pattern — is included: `lint --fix` used to delete the space `case ` needs, and a case-label colon
+right after a `]` (`case [1]:`) is now correctly left as a report-only finding instead of being
+silently dropped by the older #202 grammar-gap filter, which was found to be dropping it (a
+regression caught in the same pass, never shipped). A narrower nullable-array shape the #202 filter
+correctly drops (`string[]?` inside a C# 14 `extension` block) was checked to make sure the fix for
+the case-label gap didn't resurrect it. Out of scope, unrelated pre-existing gaps confirmed present
+and unaffected on both the released 1.10.2 binary and this build: `async(1)`/`var(1)` calls and a
+method named `when` getting spaced, `when (` under `csharp_space_after_keywords_in_control_flow_statements
+= false`, `is (> 0` inner space, `*(p)` becoming `* (p)`, `and[0]`/`not[0]` indexers, SA1008 missing
+`nameof (a)`, and SA1008's `in(int, int) t` false positive. Also confirmed still present, improved but
+not eliminated: `and not`/`or not` before a parenthesized predefined type, when a parenthesized type
+comes before it (`o is (int) and not (long)`), still loses its space — 1.10.2 mis-spaced both sides of
+that shape (`is not(int) and not(long)`); this release fixes the first sign and leaves only the second.
+
+### Fixed: a cast followed by a unary sign misread as binary arithmetic (#312)
+
+`DF0139`/`SA1021`/`SA1022` trusted a `tree-sitter-c-sharp` misparse at face value: `(v) + 1` always
+parses as a cast of `v` whose operand is a spaced unary `+1`, whatever `v` is — but real Roslyn only
+agrees when `v` is a shape its parser can resolve as a type purely syntactically (a predefined type
+keyword, `global::`-alias-qualified name, or a nullable/array/pointer suffix — never a bare
+identifier, dotted name, generic, or a local named `nint`/`nuint`). `lint --fix` rewrote `(v) + 1` to
+`(v) +1`, which `dotnet format whitespace` then rejected, and `(v) + +1` to `(v) ++1`, which doesn't
+build (CS1002). Both are fixed: the misread is withheld everywhere real Roslyn would read it as
+binary, and the fix additionally checks a real double-sign fusion hazard (`- -w` staying `- -w`, not
+becoming `--w`) without over-applying that check to a *mixed* sign pair (`- +w`/`+ -w`, which can
+never fuse and the oracle wants tight) — an over-broad first version of that guard was caught in the
+same pass and never shipped. A cast's own unary-sign operand inside a string interpolation hole
+(`$"{(int) -y}"`, `$"{(global::Foo) -y}"`) is also now spaced correctly under
+`csharp_space_after_cast`; that spacing decision had nowhere else to be made inside a hole and was
+silently wrong before.
+
+### Fixed: IDE0044 marking more written fields `readonly` than it should, safely (#311)
+
+Following on from #302: IDE0044 now correctly leaves several previously-mis-marked write shapes
+alone — a `this.`-qualified assignment, a prefix `--`, a tuple-deconstruction target, a `ref`/`out`
+argument, a `ref` local alias, and an assignment inside a verbatim or raw string interpolation hole
+are all now recognised as real writes, so the field they touch no longer gets a `readonly` that
+breaks the build (CS0191/CS0192). A regression introduced by this same work and caught before it
+shipped: a generic, parameterless, expression-bodied method (`private static T Make<T>() => default;`)
+could be misread as an unwritten field named after its own type parameter and get `readonly` inserted
+before its return type (CS0106) — fixed alongside it. Known, still not fixed, all pre-existing and
+present in 1.10.2 too (not caused by this release): a write through redundant parentheses around the
+field (`(_n)++`, `((_n)) = 4`), a nested or nested-with-redundant-parens deconstruction target, a
+`ref` argument split across a line by a comment, a write via a `ref this` extension method, and
+`>>>=`. Also pre-existing: a field only ever written through a mutable struct method call
+(`_p.Bump()` on a non-readonly struct field) still gets `readonly`, which builds but silently changes
+behavior (the call now runs on a defensive copy) — `dotnet format` leaves it alone.
+
+### Fixed: DF0044 could fold a constant ternary into a different type (#309)
+
+`true ? a : b` / `false ? a : b` has a constant condition, so one branch never runs — but the dead
+branch still takes part in deciding the whole expression's type: the best common type, nullable
+lifting, the typing of `null`/`default`/`throw`, and overload resolution can all depend on both arms,
+not just the taken one. `--fix` folded straight to the taken arm's raw text regardless, which could
+silently change what the expression evaluates to, or its static type, while the file still built with
+zero errors — for example `true ? 1 : 2.0` folded to `1`, turning a `double` result into an `int` one,
+and `M(true ? 1 : 2.0)` changed which overload of `M` got called. Some shapes went further and broke
+the build outright (`true ? null : "s"`, `true ? default : 5`, a ternary with a `throw` arm). The fold
+now applies only when both arms are literals whose types can be proven identical from the syntax
+alone (`1 : 2`, `1.5f : 2F`, `"a"u8 : "b"u8`, and so on); measuring the fix turned up two further traps
+along the way that go beyond the fold's original design — the C# integer-literal size rules mean two
+unsuffixed integer literals of the same *kind* can still be different types (`1 : 3000000000` is
+`int`/`uint`), and a declared target type doesn't make a narrowing fold safe either (folding away a
+`float` arm can lose precision a wider target type would have kept). Everything else — identifiers,
+calls, `null`, `default`, `throw`, casts, a unary `-`, `ref` expressions (the pre-existing #308 case),
+lambdas, interpolated strings — is now report-only: the finding still fires, but `--fix` leaves it
+alone.
 
 ## 1.10.2 — 2026-09-27
 
