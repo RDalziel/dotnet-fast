@@ -15,8 +15,9 @@ operand right after a pattern/statement keyword — `params (T, T)[]`, `ref (x)`
 `as (int, int)?`, `case [1]:`, `o is (int) or (long)`, `ref (arr)[0]`, `foreach (var x in (xs)[0..1])`
 and several nested-pattern-comma shapes all got mis-spaced, and `lint --fix` could rewrite
 oracle-clean code into a shape `dotnet format whitespace` then rejected. The fix reads the syntax
-tree instead of guessing from token text, so a method literally named `scoped` or a variable named
-`and` is never mistaken for the keyword. A case label's own `[` / `]` — `case [.. var r]:`, a list
+tree instead of guessing from token text, so a method literally named `scoped` or `and` is never
+mistaken for the keyword (a *variable* named `and`/`not` followed by an indexer is a separate,
+pre-existing gap, listed below). A case label's own `[` / `]` — `case [.. var r]:`, a list
 pattern — is included: `lint --fix` used to delete the space `case ` needs, and a case-label colon
 right after a `]` (`case [1]:`) is now correctly left as a report-only finding instead of being
 silently dropped by the older #202 grammar-gap filter, which was found to be dropping it (a
@@ -60,10 +61,16 @@ could be misread as an unwritten field named after its own type parameter and ge
 before its return type (CS0106) — fixed alongside it. Known, still not fixed, all pre-existing and
 present in 1.10.2 too (not caused by this release): a write through redundant parentheses around the
 field (`(_n)++`, `((_n)) = 4`), a nested or nested-with-redundant-parens deconstruction target, a
-`ref` argument split across a line by a comment, a write via a `ref this` extension method, and
-`>>>=`. Also pre-existing: a field only ever written through a mutable struct method call
+`ref` argument split across a line by a `//` comment, and a write via a `ref this` extension method.
+Also pre-existing: a field only ever written through a mutable struct method call
 (`_p.Bump()` on a non-readonly struct field) still gets `readonly`, which builds but silently changes
 behavior (the call now runs on a defensive copy) — `dotnet format` leaves it alone.
+
+Known issue, not IDE0044 and not new (1.10.2 does the same): the whitespace pass splits the C# 11
+`>>>=` operator into `> >>=`, which doesn't compile. `whitespace` and `lint --fix` both do it, whether
+or not IDE0044 is enabled, and `lint` reports a `WHITESPACE` finding on correct `>>>=` code; under `lint --fix` the broken statement then also stops counting as a
+write, so the field gets `readonly` too. IDE0044 on its own (`style --diagnostics IDE0044`) handles
+`>>>=` correctly in this release. Until this is fixed, exclude files that use `>>>=` from `--fix`.
 
 ### Fixed: DF0044 could fold a constant ternary into a different type (#309)
 
