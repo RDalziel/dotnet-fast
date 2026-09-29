@@ -11,37 +11,54 @@ NuGet package — is a git-history pointer, not full notes, in
 ### Fixed: the C# 11 `>>>=`/`>>>` operators splitting apart and breaking the build (#315)
 
 `whitespace` and `lint --fix` split the unsigned-right-shift-assignment operator `>>>=` into
-`> >>=` (and could do the same to plain `>>>`), producing code that doesn't build (`CS1525`) —
-real `dotnet format` and 1.10.3 both got this wrong the same way. The operator tokenizer had
-spacing rules for `>>=`, `>>`, and `>=`, but nothing for the newer 3- and 4-character tokens, so
-the first `>` was left untouched and the second one matched the `>>=` rule and got a space forced
-in front of it. Fixed: `>>>=` and `>>>` are now recognised ahead of the older shift/comparison
-rules, checked against real `dotnet format` (SDK 10.0.303) and a real build across plain, chained,
+`> >>=`, producing code that doesn't build (`CS1525`). 1.10.3 and 1.10.2 both did this; real
+`dotnet format` leaves the operator alone. The operator tokenizer had spacing rules for `>>=`,
+`>>`, and `>=`, but nothing for the newer 3- and 4-character tokens, so the first `>` was left
+untouched and the second one matched the `>>=` rule and got a space forced in front of it. (Plain
+`>>>` was never split, just never spaced: `a>>>3` stayed tight where `dotnet format` writes
+`a >>> 3`.) Fixed: `>>>=` and `>>>` are now recognised ahead of the older shift/comparison rules,
+checked against real `dotnet format` (SDK 10.0.303) and a real build across plain, chained,
 parenthesized, and declaration/operator-body shapes, in default, `none`, and `ignore` spacing
 modes — and against generic closers like `List<List<List<int>>>`, so a triple-nested generic close
-is never misread as the new `>>>` operator. Residual, not new: with `csharp_space_around_binary_operators
-= none`, a block comment sitting right before `>>>`/`>>>=` can still get tightened against it; that's
-the same pre-existing none-mode gap every other binary/compound operator already has (tracked
-separately as #319), it compiles fine, and both the oracle and 1.10.3 leave the line alone too.
+is never misread as the new `>>>` operator.
+
+Two known leftovers, both compile fine. With `csharp_space_around_binary_operators = none`, a
+block comment right before `>>>`/`>>>=` now gets tightened against it (`x /* c */ >>>=1;` becomes
+`x /* c */>>>=1;`). `dotnet format` and 1.10.3 leave that line alone, so for these two operators
+it is new in 1.10.4, although it matches what 1.10.3 already did for every other binary/compound
+operator (#319). And a `<` comparison earlier on the same line as `>>=`/`>>>=` keeps whatever
+spacing it had (`if (a<b) a>>>=2;` becomes `if (a<b) a >>>= 2;`, where `dotnet format` also spaces
+the `<`). That already happened with `>>=` in 1.10.3 (#322).
 
 ### Fixed: more IDE0044 write shapes that were still getting marked `readonly`, safely (#311)
 
 Following on from #302 and the 1.10.3 fixes: `IDE0044 --fix` no longer marks a field `readonly`
-when it's written through a `this.`-qualified receiver in parens (`(this._n).Bump()`) of a `ref
-this` extension-method call, a comment or line break inside those parens, the null-forgiving `_n!`
-form, a `ref this` declaration with an attribute on the receiver parameter, or a `ref this`
-declaration with a comment between the `ref` and `this` modifiers — all real build breaks
-(`CS0191`/`CS0192`) that 1.10.3 also got wrong. Known, not yet fixed, all pre-existing in 1.10.3
-too and not a regression: a write inside a nested interpolated-string hole (`$"{$"{_n++}"}"` and
-its raw/verbatim variants), a doubly-parenthesized `this`-qualified receiver
-(`((this)._n).Bump()`), a `ref this` declaration in a sibling file, and the C# 14
-`extension(ref int v)` block (the oracle breaks that one too). Tracked in #311, which stays open
-until these are closed.
+when it's written through a write target wrapped in any number of redundant parentheses
+(`(_n)++`, `((_n))++`, `(this._n)++`, `PutR(ref ((_n)))`), through `ref` with a `//` line
+comment between it and the field, as a deconstruction target nested more than one level deep
+(`((a, b), (c, _n)) = ((1, 2), (3, 4))`), or through a same-file `ref this` extension-method
+call (`_n.Bump()`, `(_n).Bump()`), whether the extension is declared `ref this`, `this ref`,
+`scoped ref this`, or generic. These were all real build breaks (`CS0191`/`CS0192`) in 1.10.3.
+Two related changes. A field whose type is a mutable struct is no longer marked `readonly`, which
+matches `dotnet format`: marking it builds, but it quietly forces a defensive copy on every access.
+And every field of a `partial` type is now left alone, because a sibling part in another file or a
+source generator can write it (1.10.3 broke the build in those cases). The cost is that a plain
+single-file partial class is no longer flagged either, although `dotnet format` and 1.10.3 flag it
+(#321).
 
-### Investigated, not fixed: `--staged --fix-changed-lines` can still use the wrong line for a
-### partially-staged file in some hunk shapes (#310)
+Known, not yet fixed, and already present in 1.10.3, so not a regression: a `this`-qualified
+receiver in parens (`(this._n).Bump()`, `((this._n)).Bump()`, `((this)._n).Bump()`), a comment or
+line break inside the receiver's parens, the null-forgiving `_n!.Bump()` form, a `ref this`
+declaration with an attribute on the receiver parameter or a comment between `ref` and `this`, a
+`ref this` declaration in a sibling file, a write inside a nested interpolated-string hole
+(`$"{$"{_n++}"}"` and its raw/verbatim variants), and the C# 14 `extension(ref int v)` block
+(`dotnet format` breaks that one too). Tracked in #311, which stays open until these are closed.
 
-A fix landed and was reverted after verification found it traded one bug for another: when the
+### Investigated, not fixed: `--staged --fix-changed-lines` on a partially-staged file (#310)
+
+When a file has both staged and unstaged changes, `--staged --fix-changed-lines` can still aim a
+staged line's fix at the wrong working-tree line and silently skip it. This is unchanged from
+1.10.3. A fix landed and was reverted after verification found it traded one bug for another: when the
 same unstaged hunk both inserts a line above a staged line and edits that staged line, the line
 remap can land on the newly inserted line instead of the staged one, silently dropping the fix and
 turning a real `exit 1` into a false-clean `exit 0`. No behavior changed in this release for
