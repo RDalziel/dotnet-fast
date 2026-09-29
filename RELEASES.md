@@ -2,9 +2,50 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.3`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.4`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.4 — 2026-09-29
+
+### Fixed: the C# 11 `>>>=`/`>>>` operators splitting apart and breaking the build (#315)
+
+`whitespace` and `lint --fix` split the unsigned-right-shift-assignment operator `>>>=` into
+`> >>=` (and could do the same to plain `>>>`), producing code that doesn't build (`CS1525`) —
+real `dotnet format` and 1.10.3 both got this wrong the same way. The operator tokenizer had
+spacing rules for `>>=`, `>>`, and `>=`, but nothing for the newer 3- and 4-character tokens, so
+the first `>` was left untouched and the second one matched the `>>=` rule and got a space forced
+in front of it. Fixed: `>>>=` and `>>>` are now recognised ahead of the older shift/comparison
+rules, checked against real `dotnet format` (SDK 10.0.303) and a real build across plain, chained,
+parenthesized, and declaration/operator-body shapes, in default, `none`, and `ignore` spacing
+modes — and against generic closers like `List<List<List<int>>>`, so a triple-nested generic close
+is never misread as the new `>>>` operator. Residual, not new: with `csharp_space_around_binary_operators
+= none`, a block comment sitting right before `>>>`/`>>>=` can still get tightened against it; that's
+the same pre-existing none-mode gap every other binary/compound operator already has (tracked
+separately as #319), it compiles fine, and both the oracle and 1.10.3 leave the line alone too.
+
+### Fixed: more IDE0044 write shapes that were still getting marked `readonly`, safely (#311)
+
+Following on from #302 and the 1.10.3 fixes: `IDE0044 --fix` no longer marks a field `readonly`
+when it's written through a `this.`-qualified receiver in parens (`(this._n).Bump()`) of a `ref
+this` extension-method call, a comment or line break inside those parens, the null-forgiving `_n!`
+form, a `ref this` declaration with an attribute on the receiver parameter, or a `ref this`
+declaration with a comment between the `ref` and `this` modifiers — all real build breaks
+(`CS0191`/`CS0192`) that 1.10.3 also got wrong. Known, not yet fixed, all pre-existing in 1.10.3
+too and not a regression: a write inside a nested interpolated-string hole (`$"{$"{_n++}"}"` and
+its raw/verbatim variants), a doubly-parenthesized `this`-qualified receiver
+(`((this)._n).Bump()`), a `ref this` declaration in a sibling file, and the C# 14
+`extension(ref int v)` block (the oracle breaks that one too). Tracked in #311, which stays open
+until these are closed.
+
+### Investigated, not fixed: `--staged --fix-changed-lines` can still use the wrong line for a
+### partially-staged file in some hunk shapes (#310)
+
+A fix landed and was reverted after verification found it traded one bug for another: when the
+same unstaged hunk both inserts a line above a staged line and edits that staged line, the line
+remap can land on the newly inserted line instead of the staged one, silently dropping the fix and
+turning a real `exit 1` into a false-clean `exit 0`. No behavior changed in this release for
+`--staged --fix-changed-lines`; #310 stays open.
 
 ## 1.10.3 — 2026-09-28
 
