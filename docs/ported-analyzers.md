@@ -3762,13 +3762,13 @@ The `}` of an object/collection initializer should be preceded by a space — `{
 
 *Port of StyleCop.Analyzers SA1014 · Style · has an autofix* · [upstream docs](https://github.com/DotNetAnalyzers/StyleCopAnalyzers/blob/master/documentation/SA1014.md)
 
-The `<` of a generic argument list should sit tight against the name (`List<int>`, not `List <int>`). Fires on a `<` preceded by whitespace on the same line, anchored at the `<`. The opening-bracket twin of StyleCop SA1015. Native port of StyleCop SA1014; the fix deletes the same-line whitespace run.
+The `<` of a generic argument list should sit tight against the name (`List<int>`, not `List <int>`). Fires on a `<` preceded by whitespace on the same line, anchored at the `<`. The opening-bracket twin of StyleCop SA1015. Native port of StyleCop SA1014; the fix deletes the same-line whitespace run. A `<` that is really a relational operator followed by a shift or comparison (e.g. `a < b >>> 1`) is never a generic close and is not reported.
 
 ### `SA1015` — Closing generic brackets should be spaced correctly.
 
 *Port of StyleCop.Analyzers SA1015 · Style · has an autofix* · [upstream docs](https://github.com/DotNetAnalyzers/StyleCopAnalyzers/blob/master/documentation/SA1015.md)
 
-The closing `>` of a type-argument or type-parameter list should not be preceded by a space, and its required following spacing depends on what comes next — tight neighbors like `(`/`.`/`,`/`[`/`;` and a case-pattern `:` want none, `)`/`>`/a nullable type's `?` allow either, everything else wants exactly one. Fires per that table, anchored at the `>`; a comparison `a > b` is never touched (only `type_argument_list`/`type_parameter_list` closes are inspected). Native port of StyleCop.Analyzers SA1015; the fix deletes or inserts a single space.
+The closing `>` of a type-argument or type-parameter list should not be preceded by a space, and its required following spacing depends on what comes next — tight neighbors like `(`/`.`/`,`/`[`/`;` and a case-pattern `:` want none, `)`/`>`/a nullable type's `?` allow either, everything else wants exactly one. Fires per that table, anchored at the `>`; a comparison `a > b` is never touched (only `type_argument_list`/`type_parameter_list` closes are inspected), and neither is a `<` that is really relational and immediately followed by a shift or another comparison (e.g. `a < b >>> 1`). Native port of StyleCop.Analyzers SA1015; the fix deletes or inserts a single space.
 
 ### `SA1016` — Opening attribute brackets should not be followed by a space.
 

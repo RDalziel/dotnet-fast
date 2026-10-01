@@ -2,9 +2,127 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.4`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.5`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.5 — 2026-10-01
+
+### Fixed: `List<int>` getting spaced apart to `List < int>` before `&& || & | ^ == != }` (#318)
+
+The generic-vs-less-than scanner only accepted a narrow set of bytes as proof that a `>` really
+closes a generic type-argument list (letters, `( [ . : { , ; > ) ] ?` and `=>`). The C# spec's full
+disambiguation follower set is wider — `( ) ] } : ; , . ? == != | ^ && || & [` — so a binary operator
+or `}` directly after the close fell outside it, the scanner gave up on the pairing, and the opening
+`<` fell through to the relational-operator path. `is X<Y<Z<int>>>` && and plain `List<int>&&ok`
+alike got `<`/`>` spaced apart as if they were comparisons. A follow-up repair in the same release
+restored spacing for a tight `&`/`|`/`^` right after the now-correctly-paired close (`List<int>&ok`
+now becomes `List<int> & ok`, matching `dotnet format` and 1.10.4), which the first fix had
+temporarily dropped. Both confirmed against real `dotnet format` and the released 1.10.4 binary.
+
+### Fixed: a block comment losing its space before a `none`-mode operator (#319)
+
+With `csharp_space_around_binary_operators = none`, the whitespace run between a block comment's
+`*/` and a following binary or compound operator was trimmed unconditionally — `x /* c */   >>>=1`
+became `x /* c */>>>=1`. The `none`-mode code path never got the same block-comment guard its
+`BeforeAndAfter` sibling already had (#201); #315's new `>>>`/`>>>=` handling in 1.10.4 went through
+the same unguarded path, which is why those two operators regressed in 1.10.4 specifically. The
+matching unary-operator path (`++`/`--`/unary `-`/`+`) had the same bug in every spacing mode,
+including the default one, where a multi-space or tab run before the operator was being collapsed
+to a single space instead of preserved as `dotnet format` does; fixed alongside it.
+
+### Fixed: a relational `<` reading through a `)` as a generic open (#322)
+
+`if (a<b) a>>=2;` and the same shape with `>>>=`, `>>`, or `>>>` got half-formatted: the shift
+operator was spaced correctly but the `<` guarding it was not, because the shared
+generic-vs-comparison scanner read straight through the `if`'s closing `)` and treated the
+following shift run as a nested generic close. `whitespace --verify-no-changes` reported the
+half-formatted file as clean where real `dotnet format` exits 2. Fixed by tracking paren/bracket
+balance from the candidate `<` — a type-argument list can never contain an unmatched `)`/`]`.
+Two cosmetic gaps remain, both also present in 1.10.4 and non-breaking: a few constructs without an
+enclosing `)` (`G2(a<b, b>>1)`, a `?:` operand, wrapped multi-line calls) still don't get the same
+spacing `dotnet format` gives them, and a function-pointer type (`delegate*<List<int>, void>`,
+`delegate* managed<`) gets mis-spaced in a way that makes oracle-clean code dirty — tracked
+separately, not part of this fix's scope.
+
+### Fixed: SA1014/SA1015 no longer rewrite a misparsed generic-vs-shift/comparison into a build break (#316)
+
+`tree-sitter-c-sharp` always prefers a generic parse for `a < b`, so `a < b >>> 1` or `a < b >= 1`
+comes out of the grammar as a closed generic followed by a shift or comparison — a shape Roslyn's
+disambiguation rule never actually produces (a `>`-led token can never legally follow a real generic
+close there). SA1014/SA1015 trusted that parse at face value and `lint --fix` split the trailing
+`>>>`/`>>`/`>=` apart, a build break (`CS1525`) that real `dotnet format` and StyleCop.Analyzers
+1.1.118 both leave alone. Fixed across three passes, the last of which stopped the exemption from
+also swallowing a *real* generic that happens to sit in an `as`/`is` type position followed by its
+own unrelated `>`-led operator (`o as Gen<int> > 1`), which had started silently dropping genuine
+findings 1.10.4 still caught.
+
+Known, not yet closed, and newly visible now that this guard ships: two narrower shapes still lose
+real SA1014/SA1015 findings that 1.10.4, StyleCop, and a real build all confirm — an `is`-pattern
+generic followed by a `>`-led operator where the user's own type overloads `operator >` (`o is
+Gen<int> > xb`), and a `global::`-qualified generic after `as` (`o as global::GG<int> > 1`). Neither
+one risks a build break (the parens/guard direction here is "don't rewrite," not "rewrite wrong"),
+so withholding was the safe call; tracked in #316, which stays open. A long-standing, unrelated false
+positive on nested shift comparisons without a preceding `<` (`G3(a < b, c < d, e >> g)`) is also
+still open and was not made worse by this fix.
+
+### Fixed: RCS1032/SA1119 no longer deletes a tuple's own comma on a generic-shaped misparse (#317)
+
+The same grammar misparse above also hits a parenthesized tuple whose element starts with `>>`,
+`>>>`, or `>=` (`(a < b, b >> a)`): `tree-sitter-c-sharp` reads it as a fake generic-fronted
+binary/assignment expression inside otherwise-redundant parens. SA1119 (and the report-only RCS1032)
+then "fixed" it by deleting the tuple's own comma — `CS1002`/`CS1513` — reproduced on both HEAD and
+the released 1.10.4 binary. Fixed across three passes, the last of which replaced an ad hoc list of
+exempted shapes with a structural, recursive check so any depth of wrapping (nested binary/assignment,
+a cast, a unary over a deeper member access) is caught the same way; also widened IDE0047's own
+unrelated generic-argument carve-out (same misparse family) to recognise a qualified type name,
+`global::`, and `is not`, so it stopped misreading those as a tuple and losing true positives of its
+own.
+
+Known, not yet closed: an `await` operand feeding the misparse (`return (await t < b, b >> a);`)
+still breaks the build the same way under `lint --fix`, and a lambda `=>` or a `> .5` literal sharing
+the line can still mask the real tuple comma from IDE0047's formatter path (`return (a < b, () => {
+});`) — both pre-existing in 1.10.4, not new here. IDE0047 also still leaves some redundant parens in
+place that 1.10.4 and `dotnet format` strip — a pattern-combinator operand (`x is null or
+Dictionary<int, string>`), a generic nested inside a qualified name, an `@`-prefixed identifier, or
+whitespace before `<` all still fall outside its carve-out. None of these is a build break or dirties
+otherwise-clean code; #317 stays open for them.
+
+### Fixed: more IDE0044 write shapes that were still getting marked `readonly`, safely (#311)
+
+Following on from #302 and the 1.10.3/1.10.4 passes: `IDE0044 --fix` no longer marks a field
+`readonly` when it's written through a `this`-qualified receiver wrapped in parentheses
+(`(this._n).Bump()`), through a `checked`/`unchecked` block or expression wrapping the write, or
+through a same-file `ref this` method or C# 14 `extension(ref int v)` block whose receiver is
+parenthesised or qualifier-wrapped (`(this._f).BX01()`, `(_f).Trim()`). These were real build breaks
+(`CS0191`/`CS0192`) in 1.10.4.
+
+Known, not yet fixed, already present in 1.10.4 (not a regression): a `ref`-receiver extension or
+`extension(ref int v)` block declared in a *sibling* file, the raw-string form of the nested
+interpolated-string-hole write shape where the inner and outer raw strings use the same number of
+quotes, and `++`/`--` applied to a field through the null-forgiving `!` operator (`_f!++;`,
+`(_f!)++;`). #311 stays open until these are closed.
+
+### Investigated, not fixed: IDE0044 and multi-file `partial` declarations (#321)
+
+1.10.4 stopped marking any field of a `partial` type `readonly` at all, to avoid missing a write in a
+sibling file. A narrower fix — recognise a sibling reliably, so a plain partial class with no real
+sibling write could go back to being flagged, matching `dotnet format` — was attempted and backed out
+after verification found it still misses several real sibling-header shapes: the keyword and type
+name split across two lines, two type headers on the same source line, a header preceded by a block
+comment, and a header following a UTF-8 BOM (the Visual Studio default for new files). Each of those
+still breaks the build (`CS0191`) exactly the way 1.10.4's blanket holdback exists to prevent. No
+behavior changed in this release for #321; the holdback stays as broad as it was in 1.10.4.
+
+### Investigated, not fixed: `--staged --fix-changed-lines` on a partially-staged file, continued (#310)
+
+A further repair to the staged/working-tree line-mapping algorithm was attempted and backed out
+after verification found a new way it can still misplace a fix: on a file with duplicate line text,
+the mapper's tie-break can land a fix on a *committed* line that was never staged, while silently
+letting the actual staged violation through uncorrected and re-staging it. One of the two repro
+shapes is a confirmed regression against 1.10.4 (a real violation gets committed where 1.10.4 left
+the file alone). No behavior changed in this release for `--staged --fix-changed-lines`; #310 stays
+open.
 
 ## 1.10.4 — 2026-09-29
 
