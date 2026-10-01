@@ -14,11 +14,12 @@ The generic-vs-less-than scanner only accepted a narrow set of bytes as proof th
 closes a generic type-argument list (letters, `( [ . : { , ; > ) ] ?` and `=>`). The C# spec's full
 disambiguation follower set is wider — `( ) ] } : ; , . ? == != | ^ && || & [` — so a binary operator
 or `}` directly after the close fell outside it, the scanner gave up on the pairing, and the opening
-`<` fell through to the relational-operator path. `is X<Y<Z<int>>>` && and plain `List<int>&&ok`
+`<` fell through to the relational-operator path. `is X<Y<Z<int>>> &&` and plain `List<int>&&ok`
 alike got `<`/`>` spaced apart as if they were comparisons. A follow-up repair in the same release
-restored spacing for a tight `&`/`|`/`^` right after the now-correctly-paired close (`List<int>&ok`
-now becomes `List<int> & ok`, matching `dotnet format` and 1.10.4), which the first fix had
-temporarily dropped. Both confirmed against real `dotnet format` and the released 1.10.4 binary.
+makes a tight `&`/`|`/`^` right after the now-correctly-paired close get spaced: `List<int>&ok` now
+becomes `List<int> & ok`, matching `dotnet format`. The first fix had left that line unflagged
+entirely. 1.10.4 did flag it, but rewrote it wrongly to `List < int>&ok`, so this is new behavior,
+not a restored one. Both confirmed against real `dotnet format` and the released 1.10.4 binary.
 
 ### Fixed: a block comment losing its space before a `none`-mode operator (#319)
 
