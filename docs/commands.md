@@ -135,7 +135,17 @@ on an explicit `--from`/`--to` or `--ci` push build. Scoping affects reported fi
 `--fix` still rewrites whole files unless you also pass `--fix-changed-lines` (needs a range flag and
 `--fix`/`--fix-safe-only`), which bounds the fix to the exact same scope the report used: the fix is
 computed the usual way and then reconciled against the original hunk by hunk, so a hunk touching even
-one out-of-scope line is withheld in full rather than partially applied.
+one out-of-scope line is withheld in full rather than partially applied. (One exception: when that hunk
+is a run of adjacent lines that are each plainly the same statement before and after a one-line fix,
+each line is decided on its own, so a staged fix right next to older, unrelated debt still lands.)
+
+**Partly staged files.** When a file has both staged and unstaged edits, `--staged` checks the
+**staged** content (what the commit will record) and reports line numbers in that content. Under
+`--fix-changed-lines` such a file is not fixed at all: it is left as it is on disk and in the index,
+stderr says `skipped fix for <file>: file has unstaged changes; stage or stash them and re-run`, and the
+exit code is `1` if the staged content still has a finding in the staged lines. `--deep` and
+`--fantomas` still read the working tree for such a file. Inside a pre-commit hook, `--staged` reads the
+index git gives the hook, so `git commit -a`, `-i` and `--only` are checked on what they will commit.
 
 **Every scope covers every language this tool reads.** `--staged`, `--affected`, `--ci`, `--pr-base`,
 `--base` and `--from`/`--to` resolve changed `.cs` **and** `.fs`/`.fsi`/`.fsx` files, so a changed F#

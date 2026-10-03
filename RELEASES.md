@@ -2,9 +2,292 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.5`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.6`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.6 — 2026-10-03
+
+### Fixed: tight `>=` and `<=` being split into `> =` and breaking the build (#326)
+
+`whitespace`, `format` and `lint --fix` split a tight `>=` or `<=` into `> =` when the character
+before it was not a plain letter, digit or closing bracket, or the operand after it started with
+`.5`. The result did not compile (`CS1525`), and `--verify-no-changes` reported clean code as dirty.
+1.10.4 and 1.10.5 both did this. For example:
+
+- `o as Gen<int> >= 1` became `o as Gen<int> > = 1`;
+- the list pattern `arr is [>= 1, <= 2]` became `arr is [> = 1, <= 2]`;
+- `o as int?>=1` became `o as int?> = 1`, and `x>=.5` became `x> = .5`.
+
+A `>=` or `<=` is now always kept as one operator. Where `dotnet format` spaces it, so does
+`dotnet-fast` (`o as int? >= 1`, `x >= .5`), and the same tight forms are still reported by
+`whitespace --verify-no-changes` and `lint`. A non-ASCII name before the operator (`café >= 1`) no
+longer stops the run in the `none` and `ignore` spacing modes.
+
+One shape is unchanged from 1.10.x and still differs from `dotnet format`: the tight
+`o as Gen<int>>= 1` becomes `o as Gen<int >>= 1`, which builds, where `dotnet format` writes
+`o as Gen<int> >= 1`. Changing it would bring back the #315 build break on `a < b ? x >>>= 1 : x`.
+
+### Fixed: spacing next to a non-ASCII name
+
+A `+` or `-` with a non-ASCII name on either side (`ρ + x`, `x - café`, `(double)ρ + 1.5`) was read
+as a sign, not an operator, and lost its spaces: `ρ + x` became `ρ+x`, and a tight `ρ+x` was not
+reported, where `dotnet format` leaves the first alone and spaces the second. 1.10.4 and 1.10.5 did
+this under the default spacing. Under `none` and `ignore` they stopped the run on these lines instead
+(see #326 above), so with that fixed the same rewrite reached those modes too, and under `none`
+`static double ρ = 1;` became `static double ρ= 1;`. All of these now match `dotnet format`, and a
+wrapped line that starts with `+` or `-` after a line ending in a non-ASCII name keeps its space.
+Other operators next to a non-ASCII name are still not always spaced the way `dotnet format` spaces
+them (a tight `ρ*x` is left as written, for example); the code builds and means the same either way.
+
+### Fixed: `lint --fix` and IDE0047 removing a tuple's parentheses (#317)
+
+These shapes are valid tuples, but the parser reads the `<` ... `>` in them as a generic. Removing the
+parentheses breaks the build (`CS1002`/`CS1513`), and `dotnet format`, StyleCop and Roslynator leave
+them alone:
+
+- IDE0047 (`format`, `style`) removed the parentheses of `(a < b + 1, c > (d))`,
+  `(a < this.c, d > (b))`, `(a < b, (c) > (d))`, `(a < base.GetHashCode(), d > (b))`,
+  `(a < int.MaxValue, b > (a))`, `(o is T0<xq, c >>> d)` and `(o is T0 < xq, c > .5)`. 1.10.4 and
+  1.10.5 both did this.
+- SA1119 and RCS1032 (`lint --fix`) removed them from `return (await t < b, b >> a);` and from most
+  other `await` forms of it, and from `(a < this.c, d > (b))`. In `Use((await t < b, b >> a))` the
+  fix would have turned one tuple argument into two arguments. The `await` shape was listed as an
+  open issue in the 1.10.5 notes.
+
+These parentheses are now left in place. IDE0047 still removes them when the text between `<` and `>`
+can only be a type-argument list, and that now includes lists with comments in them
+(`(Make2<int, string /* a > b */>())`), as 1.10.4 and `dotnet format` do.
+
+### Fixed: SA1014/SA1015, SA1119 and IDE0047 findings that 1.10.5 lost (#316, #317)
+
+The 1.10.5 guard against that misreading also hid findings that 1.10.4 reported and that StyleCop or
+`dotnet format` agree with. These are reported (and fixed) again:
+
+- SA1015 on an `is` pattern generic followed by a `>` operator, `o is Gen<int > > xb`, including a
+  `global::`-qualified one, `o is global::N.Gen<int > > 1`. Both were listed as open in the 1.10.5
+  notes.
+- SA1015 on the inner brackets of a nested generic in a `foreach` header,
+  `foreach (IF<Ctx<int >> f in xs)`. The outer brackets are still not checked, as in every release
+  (see [Known limit: generic or comparison?](docs/support-matrix.md#known-limit-generic-or-comparison)).
+- SA1119 on `(o is Gen<int> > xb)`.
+- IDE0047 removing the parentheses around a type test written with a space before `<`, when the
+  generic ends the parenthesized value: `(x is Dictionary <int, string>)`.
+
+Some shapes 1.10.5 lost are still not reported. They are listed under Known limits below.
+
+### Fixed: SA1014/SA1015 reporting comparisons as generics (#331)
+
+In an argument list, `G2(a < b, c > d)`, `G3(a < b, c < d, e >> g)` and
+`G4(a < b, c < d, e < f, g >>> g)` are comparisons, but 1.10.4 and 1.10.5 reported SA1014/SA1015 on
+them and `lint --fix` rewrote them, where StyleCop reports nothing. The same applies to
+`G2(a < b, c > -d)`, `G2(a < b, c > +d)` and the collection expression `[a < b, c > d]`. These lines
+now get no SA1014/SA1015 finding and no fix. Real declarations next to them (`out List<int > v`,
+deconstruction) are still reported, and so is a generic nested in such a chain whose `>` is followed
+by `.` or `(` (`G2(a < b, Gen<int >.V > d)`). See
+[Known limit: generic or comparison?](docs/support-matrix.md#known-limit-generic-or-comparison).
+
+### Fixed: comparison chains that end in a shift by a literal (#323)
+
+`a<b>>1`, `G2i(a<b, b>>>1)` and `G3(a<b, c<d, e>>>1)` were read as generics and left unspaced.
+`dotnet format` spaces them as comparisons and shifts (`a < b >> 1`), and so does `dotnet-fast` now,
+including tightening the spaced form under `csharp_space_around_binary_operators = none`. A chain
+whose last operand is a name, a parenthesized expression or an element access (`a<b>>c`) is still
+left as written; see the Known limit linked above.
+
+### Fixed: function-pointer types made dirty by the formatter (#330)
+
+`delegate*<int, void> f` became `delegate*<int, void > f`, and `delegate* managed<int, void>` became
+`delegate * managed<int, void>` (the same for `unmanaged` and `unmanaged[Cdecl]`). Both are clean code
+that `dotnet format` leaves alone; 1.10.4 and 1.10.5 changed them. They are now left alone, and
+`delegate *<`, `delegate* <` and `delegate*managed` are spaced the way `dotnet format` spaces them.
+Spacing inside the brackets (`delegate*< int, void >`) is still not normalized.
+
+### Fixed: `lint --staged` checked the working tree, not what the commit records (#327)
+
+`--staged` takes its changed lines from the staged copy of each file, but the check itself read the
+file on disk. For a file that was only partly staged (some edits staged, others not) the two
+disagreed, and the check could pass what it never looked at:
+
+- an unstaged line inserted above the staged change moved the report off the staged line, so the
+  staged finding was dropped and another one was pinned to the wrong line;
+- a staged violation that was fixed again in the working tree (but not re-staged) passed the hook and
+  was committed;
+- a clean staged line with an unstaged violation on top blocked the commit;
+- the F# hygiene rules exited 0 on a staged `FSH0001` once an unstaged line sat above it.
+
+A partly staged file is now checked on its staged content, read through git's own checkout filters
+(so a `core.autocrlf` checkout is not flagged for line endings it does not have). Its line numbers in
+the report now refer to the staged content: what the commit records, which can differ from the line
+numbers your editor shows until the unstaged edits are staged or stashed. Fully staged files are
+checked exactly as before. In the partly staged cases we checked (unstaged edits above, below and on
+top of the staged change), the report and exit code are now exactly what 1.10.5 gives for the same
+repository once the working tree is reset to the index.
+
+### Changed: `--staged --fix-changed-lines` skips the fix for a partly staged file and says so (#310)
+
+Bounding a fix to the staged lines cannot be done safely while the file on disk has other, unstaged
+edits: the staged line numbers do not line up with the working-tree file, and three attempts to map
+them were backed out. So for a partly staged file, `lint --staged --fix --fix-changed-lines` (and its
+`--diff` preview) now leaves the file and the index untouched and prints, on stderr, in every output
+mode:
+
+```
+skipped fix for Target.cs: file has unstaged changes; stage or stash them and re-run
+```
+
+The exit code still reflects the staged content: `1` when what will be committed still has a finding in
+the staged lines, `0` when it does not. `--sarif` still records those findings. Before, such a file
+could get a fix on the wrong line, or none at all with exit 0, and a violation that existed only in the
+working tree could be fixed and re-staged into a commit that never contained it. Fully staged files,
+plain `--staged`, and `--staged --fix` without `--fix-changed-lines` are unchanged.
+
+### Fixed: commit hooks checked the wrong index for `git commit -a`, `-i` and `--only` (#329)
+
+For `git commit -a`, `git commit -i <path>` and `git commit <path>` / `--only`, git hands the
+pre-commit hook a temporary index (`.git/index.lock` or `.git/next-index-*.lock`) holding what the
+commit will record. `lint --staged` ignored it and read `.git/index`, so a violation the commit was
+about to record could pass the hook, and `lint --staged --fix` could not re-stage into the commit's
+index. The hook's index is now used whenever it lives in the repository's own git directory (anything
+else is still ignored, as before). Plain `git commit` and linked worktrees are unchanged.
+
+One git behavior to know: after `git commit --only <path>` (or `git commit <path>`), git restores the
+index to what it held before the commit, so a fix the hook re-staged is in the commit but the index
+still shows the pre-fix line until you stage it again.
+
+### Fixed: staged files with non-ASCII names were not checked (#335)
+
+`lint --staged` silently skipped a staged file whose name contains a non-ASCII character (`Café.cs`),
+because git printed the name escaped. Such files are now checked.
+
+### Fixed: `--fix-changed-lines` dropped a staged fix next to committed debt (#328)
+
+When the full fix also changed a line of older, unrelated code directly above or below the staged line
+(for example a committed `int debt = 3;;` right above a staged `int fixme = 2;;`), the two edits were
+treated as one, the older line was outside the staged lines, and the whole fix was withheld: the
+`--diff` preview showed nothing and exited 0. The staged line is now fixed on its own and the older
+line is left byte-for-byte as committed. This only applies when each changed line is plainly the same
+statement before and after its fix; reordered or merged lines are still withheld whole.
+
+### Known limits for partly staged files
+
+`--deep` and `--fantomas` still read the working tree under `--staged`, so for a partly staged file
+they can report on unstaged lines (#339). A file that is staged and then deleted from the working tree
+is not checked (#337). Plain `lint --staged --fix` on a partly staged F# file can still fix the wrong
+line (#336). In each case, staging or stashing the unstaged edits first gives the exact result.
+
+### Fixed: IDE0044 adding `readonly` where it breaks the build or copies a struct (#311, #325)
+
+IDE0044 decided each field from the one file it was fixing. These shapes were marked `readonly` by
+1.10.4 and 1.10.5, and `dotnet format` leaves all of them alone:
+
+- A field passed to a `ref this` extension method (or a member of a C# 14 `extension(ref …)` block)
+  declared in another file of the project, in another part of a `partial` static class, or in a
+  `ProjectReference`'d project. The build then failed (`CS0192`). A call to such a method inside an
+  interpolation hole, `$"{_f.Bump()}"`, was missed too, even with the method in the same file.
+- `_f!++`, `(_f!)++` and similar writes through the null-forgiving `!` (`CS0191`).
+- A write in a raw interpolated string nested in another with the same number of quotes,
+  `$"""{$"""{_d++}"""}"""` (`CS0191`).
+- A field whose type is a mutable struct: one declared in another file, a positional
+  `record struct` or a struct with a primary constructor, or a BCL struct with public mutable state
+  (`Vector2`, `Point`, `DictionaryEntry`, `HashCode` and others). This builds, but every member call on
+  a `readonly` struct field works on a copy, so behavior can change.
+
+In a project, solution or folder run, IDE0044 now reads every file of the project (and of the
+projects it references) for `ref this` methods and mutable structs, before `--include`/`--exclude`
+are applied, and an edit to such a sibling file invalidates cached verdicts. Matching is by name, so
+an unrelated type or method that shares a name can also hold a field back. That only loses a
+finding; it never breaks a build. Every change here only holds fields back, so on these shapes
+`dotnet-fast` now reports fewer IDE0044 findings than 1.10.5, matching `dotnet format`. One trade-off is listed under
+Known limits below: the text of raw and verbatim interpolated strings.
+
+Some ways of writing a mutable struct in another file are still not recognised, so a field of that type
+can still be marked `readonly`, as in 1.10.4 and 1.10.5: accessors on their own lines, more than one
+member on a line, a member on the struct's header or opening-brace line, an array, collection or lambda
+initializer on a struct field, a `using` alias for the struct, a nested struct written as
+`Holder.Inner`, and `Nullable<Mut>` (`Mut?` is recognised). The build still succeeds, but member calls
+on the field then work on a copy (#325, still open).
+
+### Fixed: IDE0044 on structs that overwrite themselves as a whole
+
+A struct that overwrites itself as a whole anywhere in its body (`this = default;`,
+`this = other;`, `ref this`, `out this`, `ref S r = ref this;`, or `(this, o) = (o, this);`) gets no
+IDE0044 on any of its fields from `dotnet format`. `dotnet-fast` now does the same. Before, it marked
+such a field when the constructor that wrote it ran over several lines, so `--fix` added a `readonly`
+that `dotnet format` would not.
+
+### Fixed: IDE0044 build breaks from things that look like constructors
+
+These were already in 1.10.4 and 1.10.5, and were found while fixing #324. IDE0044 treated any
+line whose last name before `(` matched the type as a constructor, and trusted writes it should not
+have. Each of these made `--fix` add `readonly` and the build then failed (`CS0191`/`CS0198`), while
+`dotnet format` leaves all of them alone:
+
+- a finalizer, `~C() { _n = 1; }`;
+- a conversion operator, `public static implicit operator C(int x) { s_n = x; … }` (read as a static
+  constructor);
+- a property or field initializer wrapped onto several lines, `public C Next { get; } = new C(1) {` …;
+- a write inside a local function that returns a value, `int L() { _n = 1; return 0; }`;
+- a nested type's static constructor writing the outer type's static field;
+- an object initializer of the same type inside a constructor, `new C(1) { _n = 1 }` or
+  `new(1) { _n = 1 }`.
+
+None of these count as a constructor write any more.
+
+A related break was found on a real repository (Polly's `NonSlidingTtl`). When an expression-bodied
+member wraps onto a second line, `public C(int n) =>` then `this.n = n;`, that second line was read as
+a field declaration. `readonly` was put in front of the statement (`CS1525`), or, when the member was
+an ordinary method, the write was ignored and the field it assigns was marked (`CS0191`). That line is
+now read as the assignment it is.
+
+### By design: IDE0044 and `partial` types (#321)
+
+No change in behavior: IDE0044 still leaves every field of a `partial` type alone, as it has since
+1.10.4. On `partial` types `dotnet-fast` therefore reports fewer IDE0044 findings than `dotnet format`,
+and `style --verify-no-changes` can exit 0 where `dotnet format style --verify-no-changes` exits 2.
+This is now listed under Known limits in the docs.
+
+### Known limits: findings left out on purpose, to avoid breaking builds
+
+Each of these is a finding `dotnet format`, StyleCop or Roslynator reports and 1.10.4 reported, which
+this release does not. In each case the code builds either way: `dotnet-fast` reports less, it does
+not rewrite anything wrongly. Reporting them would need a compiler to tell the shape apart from one
+where the same fix breaks the build, so they are documented rather than guessed at. All are in the
+docs' Known limits sections.
+
+- **IDE0044 and the text of raw or verbatim interpolated strings.** A field name followed by a write
+  (`_e++`, `_e = 2`) anywhere in a raw (`$"""…"""`, `$$"""…"""`) or verbatim (`$@"…"`) interpolated
+  string that has a hole stops IDE0044 from marking that field, even when the name is only literal
+  text. Telling literal text from holes in these strings needs a full C# lexer, and when the write
+  really is in a hole (`$"""{$"""{_d++}"""}"""`), adding `readonly` breaks the build (`CS0191`), as
+  1.10.4 and 1.10.5 did. This now also covers nested strings, so these lose the finding compared
+  with 1.10.5: `$"""{$""" _e++ {1}"""}"""`, `$"""{$"""{1} _e++"""}"""`,
+  `$"""{$"""{1}"""} _e++"""`, `$"""{$""" _e = 2 {1}"""}"""` and
+  `$$"""{{$$""" _e++ {{1}}"""}}"""`. Two more, `$""""{$""" _e++ {1}"""}""""` and
+  `$@"{$@" _e++ {1}"}"`, were already left alone by 1.10.5. Plain `$"…"` strings are read exactly,
+  so `$"{$" _e++ {1}"}"` is still marked.
+- **IDE0044 and structs with a mutable field inside `#if`.** A field whose type is a struct that
+  declares a mutable field in an `#if` branch is left un-`readonly`, even when that branch is not
+  compiled in a Debug build: `#if RELEASE` / `public int Z;` / `#endif`, `#if !DEBUG` with a
+  `readonly` field under `#else`, or a symbol you define elsewhere. `dotnet format` judges only the
+  build it loads, and 1.10.4 and 1.10.5 marked these fields `readonly` too. `dotnet-fast` does not know
+  which symbols your other builds define, and in a build where that field exists, `readonly` makes
+  every member call on the field work on a copy, so behavior can change. When the mutable field is
+  in an `#if DEBUG` branch, `dotnet format` and 1.10.x leave the field alone as well.
+- **SA1119 and RCS1032 on a comparison with a shift on its right.** `f = (a < b >> 1);`,
+  `f2 = (a < b >>> 1);`, `Use2((a < b >> 1), c > d);` and the inner pair of `((a < b >> 1))` get no
+  finding (the outer pair of `((…))` still does). StyleCop and Roslynator report them, and so did
+  1.10.4. 1.10.5 already did not. The parser reads `a < b >> 1` as a generic `a<b>` followed by
+  `> 1`, the same shape it gives the tuple `(c < d < xb, d >>> 1)`, whose parentheses cannot be
+  removed. A fix that told the two apart was tried for this release and backed out, because it
+  still broke the build on tuples like that one.
+- **IDE0047 on a type test with a space before `<` that is followed by more of the expression.**
+  `(x is Dictionary <int, string> and not null)` and `(x as Dictionary <int, string> ?? null)` keep
+  their parentheses, where 1.10.4 and `dotnet format` remove them. 1.10.5 already kept them. The
+  same check that would allow these also removed the parentheses of valid tuples such as
+  `(o is T0 < xq, string.Empty.Length > d)` and broke the build, so it was backed out. When the
+  generic ends the parenthesized value, `(x is Dictionary <int, string>)`, the parentheses are
+  removed again.
 
 ## 1.10.5 — 2026-10-01
 

@@ -192,6 +192,42 @@ normally; for an all-ASCII indent the rule is invisible, since rebuilding a spac
 reproduces the same bytes. This closes the `JContainer.cs` divergence described above. A run that mixes
 such a character with more than one ASCII space is still re-indented — a documented remaining gap.
 
+### Known limits
+
+**IDE0044 (`readonly` fields) never touches a field of a `partial` type, by design.** Marking such a
+field safely means proving that no other part of the type writes it outside a constructor: another
+file, a `Designer.cs` file, Razor or XAML code-behind, or source-generator output. A tool that reads
+source one file at a time without a compiler can't guarantee that. The consequence: on `partial` types
+`dotnet-fast` reports fewer IDE0044 findings than `dotnet format`, so `style --verify-no-changes` can
+exit 0 on code where `dotnet format style --verify-no-changes` exits 2, and `--fix` doesn't add
+`readonly` to those fields. Non-partial types are unaffected. If a CI check depends on IDE0044 catching
+fields in `partial` types, run `dotnet format style --diagnostics IDE0044` for that check.
+
+**IDE0044 reads all the text of a raw or verbatim interpolated string as code.** A field name followed
+by a write (`_e++`, `_e = 2`) anywhere in a raw (`$"""…"""`, `$$"""…"""`) or verbatim (`$@"…"`)
+interpolated string that has a hole keeps the field un-`readonly`, even when it is only literal text:
+`$"""{$""" _e++ {1}"""}"""`, `$""""{$""" _e++ {1}"""}""""`, `$@"{$@" _e++ {1}"}"`,
+`$"""{$"""{1} _e++"""}"""`, `$"""{$"""{1}"""} _e++"""`, `$"""{$""" _e = 2 {1}"""}"""`,
+`$$"""{{$$""" _e++ {{1}}"""}}"""` and the single-level `$"""{1} _e++"""`. `dotnet format` marks the
+field `readonly` in each, so `style --verify-no-changes` can exit 0 where it exits 2. Telling literal
+text from holes in these strings needs a full C# lexer, and when the write really is in a hole
+(`$"""{$"""{_d++}"""}"""`), adding `readonly` breaks the build (`CS0191`), as 1.10.4 and 1.10.5 did.
+Plain `$"…"` strings are read exactly, so `$"{$" _e++ {1}"}"` is still marked.
+
+**IDE0044 counts a mutable struct field inside any `#if` branch.** A field whose type is a struct that
+declares a mutable field in an `#if` branch is left un-`readonly`, even when a Debug build does not
+compile that branch (`#if RELEASE`, `#if !DEBUG`, or a symbol defined elsewhere). `dotnet format`
+judges only the build it loads and marks the field `readonly`, so `style --verify-no-changes` can exit
+0 where it exits 2. `dotnet-fast` does not know which symbols your other builds define, and in a build
+where that struct field exists, `readonly` makes every member call on the field work on a copy.
+
+**IDE0047 keeps the parentheses of a type test with a space before `<` when more of the expression
+follows the generic**: `(x is Dictionary <int, string> and not null)` and
+`(x as Dictionary <int, string> ?? null)` stay as written, where `dotnet format` removes the
+parentheses. Allowing these also removed the parentheses of valid tuples such as
+`(o is T0 < xq, string.Empty.Length > d)` and broke the build. When the generic ends the value,
+`(x is Dictionary <int, string>)`, the parentheses are removed.
+
 ## Native lint (default path)
 
 `dotnet-fast lint`'s default path is **syntactic-only**: it reads source as a syntax tree with no type
@@ -244,6 +280,45 @@ appear here.
   2.2/2.3 JSON is also supported.
 - **Build cache (`build`)** — backed by **Azure Blob Storage** (SAS or Entra/managed-identity auth). No
   other storage backend is supported.
+
+## Known limit: generic or comparison?
+
+Without a compiler, some `<` ... `>` pairs inside an expression can be read either as a generic
+type-argument list or as comparisons. The C# specification settles them from the token after the
+`>`; dotnet-fast deliberately takes the conservative side when that token is a plain identifier, and
+leaves those lines to you or to `dotnet format`:
+
+- **SA1014/SA1015 report nothing and fix nothing** on a comparison chain inside an argument list,
+  indexer, tuple literal or collection expression that the parser reads as a declaration:
+  `G2(a < b, c > d)`, `G3(a < b, c < d, e >> g)`, `var t = (a < b, c > d)`, `[a < b, c > d]`. The
+  same goes for a pair whose second operand starts with an arithmetic operator, such as
+  `G2(a < b, c > -d)` and `G2(a < b, c > +d)`. StyleCop agrees these are not generics. Real
+  declarations next to them (`out List<int > v`, deconstruction such as
+  `(List<int > p, int q) = ...`, `foreach ((List<int > p, int q) in ...)`) are still reported,
+  and so is a generic nested inside such a chain whose `>` is followed by `.` or `(`, which C# always
+  reads as a generic: in `G2(a < b, Gen<int >.V > d)` the `Gen<int >` close is reported and fixed.
+- **In a `foreach` header, only the inner brackets of a nested generic are checked.** The parser
+  reads `foreach (IF<Ctx<int>> f in xs)` as comparisons around `Ctx<int>`, so SA1014/SA1015 report
+  and fix the spacing of `Ctx<int >`, but not of the outer brackets (`IF <Ctx<int>>`,
+  `IF<Ctx<int> > f`, `IF<Ctx<int>>f`). StyleCop reports those; no release of dotnet-fast has.
+- **SA1119 and RCS1032 report nothing for parentheses around a comparison with a shift on its
+  right**: `f = (a < b >> 1);`, `f2 = (a < b >>> 1);`, `Use2((a < b >> 1), c > d);` and the inner
+  pair of `((a < b >> 1))` (the outer pair is still reported). StyleCop and Roslynator report them,
+  and so did 1.10.4. The parser reads `a < b >> 1` as a generic `a<b>` followed by `> 1`, the same
+  shape it gives the tuple `(c < d < xb, d >>> 1)`, whose parentheses cannot be removed without
+  breaking the build. A check that told the two apart still broke builds on such tuples and was
+  backed out.
+- **The formatter leaves the spacing of those chains exactly as written.** `dotnet format` spaces them
+  as comparisons (`G2(a<b, c>d)` becomes `G2(a < b, c > d)`) and, with
+  `csharp_space_around_binary_operators = none`, tightens the spaced form; dotnet-fast does neither.
+  The same applies when the last operand after a shift is an identifier, a parenthesized expression
+  or an element access (`a<b>>c`, `G2i(a<b, b>>(1))`, `a<b>>arr[0]`). A chain that ends in a shift
+  with a literal operand (`G2i(a<b, b>>>1)`, `a<b>>1`) is not ambiguous and is spaced exactly like
+  `dotnet format` does.
+- **Interior spacing of generic and function-pointer brackets is not normalized**: `List <int>`,
+  `List< int >`, `List<int>d`, `delegate*< int, void >`, `delegate* managed <int, void>` and
+  `delegate*<int, void>name` are left as written, where `dotnet format` tightens or spaces them.
+  Clean code is never changed, and the `*` of `delegate*` is spaced like `dotnet format` does.
 
 ## Explicitly unsupported
 
