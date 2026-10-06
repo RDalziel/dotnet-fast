@@ -6,7 +6,7 @@ The current **stable** line is `1.10.7`. Pre-1.0 history — predating the compa
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
 
-## 1.10.7 — 2026-10-03
+## 1.10.7 — 2026-10-06
 
 ### Fixed: a space forced after `(` in front of a relational pattern (#342)
 
