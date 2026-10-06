@@ -2,9 +2,29 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.6`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.10.7`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.10.7 — 2026-10-03
+
+### Fixed: a space forced after `(` in front of a relational pattern (#342)
+
+`whitespace`, `format` and `lint` added a space between an opening parenthesis and a relational
+pattern that starts inside it, and reported the code as needing a fix, so a CI gate failed on valid
+code that `dotnet format` leaves alone. 1.10.5 and 1.10.6 both did this. For example:
+
+- `x is > 1 and (< 5 or > 9)` became `x is > 1 and ( < 5 or > 9)`;
+- `x is (< 5)`, `x is not (<= 5)`, `case (< 5):` and the switch arm `(>= 5 and < 9) =>` got the
+  same space, as did `p is Pt(< 5, > 9)` and the nested `t is ((< 5), _)`.
+
+These now stay as written, and an existing space there (`x is ( < 5)`, `a is [ < 5, _]`) is removed,
+as `dotnet format` does. The one place `dotnet format` keeps a space is a positional pattern with no
+type name in front, such as `t is (< 5, > 9)`, which it writes as `t is ( < 5, > 9)`; `dotnet-fast`
+does the same.
+
+The two shapes in the original report, `foreach (var v in (values ?? []).Where(...))` and
+`day is not (DayOfWeek.Saturday or DayOfWeek.Sunday)`, were already left alone since 1.10.5.
 
 ## 1.10.6 — 2026-10-03
 
