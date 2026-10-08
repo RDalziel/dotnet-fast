@@ -2,9 +2,21 @@
 
 What changed in recent releases, in plain English. Newest first.
 
-The current **stable** line is `1.10.7`. Pre-1.0 history — predating the compatibility promise and the
+The current **stable** line is `1.11.0`. Pre-1.0 history — predating the compatibility promise and the
 NuGet package — is a git-history pointer, not full notes, in
 [RELEASES-0.x.md](RELEASES-0.x.md).
+
+## 1.11.0 — 2026-10-08
+
+### Removed: the `rewrite` command
+
+`dotnet-fast rewrite` (structural search and replace, added in 1.8.0) has been removed. It was
+read-only (search, a diff preview, and a `--check` gate) and nothing else in the tool used it.
+
+Running `rewrite` now, with or without its old flags, prints a notice and exits `2`, so a pipeline
+still calling `rewrite --check` fails loudly instead of passing silently. dotnet-fast has no
+replacement: to ban an API in CI, use the Roslyn analyzer `Microsoft.CodeAnalysis.BannedApiAnalyzers`;
+for structural search over C#, use [ast-grep](https://ast-grep.github.io).
 
 ## 1.10.7 — 2026-10-06
 

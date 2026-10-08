@@ -13,7 +13,7 @@ current directory.
 
 ## Contents
 
-**Lint & format** — [`lint`](#lint) · [`format`](#format) · [`rewrite`](#rewrite) ·
+**Lint & format** — [`lint`](#lint) · [`format`](#format) ·
 [`editorconfig`](#editorconfig)
 
 **Code health** — [`metrics`](#metrics) · [`dead-code`](#dead-code) ·
@@ -714,69 +714,6 @@ model, and why `serialNumber` is reproducible across reruns of an unchanged proj
 
 ---
 
-## `rewrite`
-
-An ast-grep-style structural search-and-replace (codemod) over C# source, built on the same
-tree-sitter CST `lint` uses. Write the C# you want to find with `$METAVARIABLE` holes; matching is
-**structural** — whitespace, line wrapping, and comments in the target never matter — and **exact**:
-extra parentheses or `this.` qualification are different trees. `$NAME` matches one node and binds
-it, `$$$NAME` matches a run of zero or more siblings, `$_` matches one node without binding.
-
-**Read-only: there is no `--write`.** `--rewrite` previews the codemod as a unified diff; applying it
-is on you (`git apply`, or by hand) — see "Safety" below for why that is a deliberate design choice,
-not a missing feature.
-
-```bash
-dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)' src                          # structural grep
-dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)' --check src                  # CI gate: exit 1 on any match
-dotnet-fast rewrite --pattern 'Assert.AreEqual($A, $B)' \
-                     --rewrite 'Assert.That($B, Is.EqualTo($A))' src                 # DRY-RUN: preview the diff (the only rewrite mode)
-```
-
-| Option | Effect |
-|---|---|
-| `--pattern <PATTERN>` | The C# snippet to find, required. |
-| `--rewrite <TEMPLATE>` | Replacement template using the pattern's metavariables. Without it, `rewrite` only searches. |
-| `--rewrite` | Preview the rewrite as a unified diff. There is no `--write` — this is the only rewrite mode. |
-| `--check` | Exit `1` when the pattern matches anywhere, **or** when any file could not be examined — the CI gate. Never writes. |
-| `--json` | Machine-readable report: `pattern`, `matchCount`, `droppedUnsafe`, `skippedConditional`, `skippedFiles`, `skippedFilesDetail`, per-file `matches` (`line`/`column`/`before`/`after`), `elapsedMs`, `toolVersion`. |
-| `--context <CONTEXT>` | Pin the harness the pattern parses in (`file`, `member`, `statement`, `expression`) instead of auto-detecting. |
-| `--selector <KIND>` | Pin the pattern root to a specific tree-sitter node kind, for the rare case auto-detection resolves to a wider node than intended. |
-
-**Safety.** With no `--write`, a preview still carries two hazards a person applying it by hand
-should know about, plus the withhold/report guards on the preview itself:
-
-- **Precedence.** A splice is never re-parenthesized: a captured node's bytes are inserted verbatim,
-  so a capture landing in a different operator-precedence context than it had in the pattern changes
-  what the expression computes, with no warning. `--pattern 'Wrap($X)' --rewrite '$X'` on
-  `Wrap(1 + 2) * 10` previews `1 + 2 * 10` — 21, not 30. Read every diff for a changed *value*, not
-  just a changed shape.
-- **Comment loss.** A comment inside the match but outside every binding is dropped, not preserved —
-  it is covered by the whole-match replacement. A comment inside a binding survives, spliced along
-  with the rest of that binding's bytes.
-- A rewrite that would introduce a parse error the file did not already have is **withheld from the
-  preview** — the same post-fix verification `lint --fix` uses — and counted as `droppedUnsafe`. This
-  net has a known hole (it silently does nothing for a file that already fails to parse), which is
-  exactly why there is no `--write`: see `docs/rewrite.md`.
-- A match inside an `#if`/`#elif`/`#else` branch is **never previewed as a rewrite**, active branch or
-  not: `rewrite` walks bare files with no project context, so unlike `lint --fix` it has no real
-  preprocessor symbols to tell a compiled-in branch from a disabled one, and treats every
-  conditional region as unsafe rather than guess. Counted as `skippedConditional`. Search mode
-  (no `--rewrite`) still lists these matches — listing is read-only.
-- **A file this tool could not even examine — not valid UTF-8, or containing the reserved
-  `__dnfMeta` marker — is counted and named (`skippedFiles`/`skippedFilesDetail`), never silently
-  dropped.** `--check` exits `1` while any exist, independent of `matchCount`: a gate that did not
-  look at everything cannot call the result clean.
-
-Rewrites splice each captured node's **verbatim source bytes**, so internal formatting and comments
-inside a binding survive unchanged; a comment inside the match but outside every binding does not (it
-is covered by the whole-match replacement). Metavariable names are uppercase (`$NAME`); a repeated
-one constrains the match (`$A == $A` matches `x == x`, not `x == y`). A pattern that does not parse in
-any harness context fails with a clear error naming every context it tried — pin one with
-`--context` when auto-detection guesses wrong.
-
----
-
 ## `doctor`
 
 A fast, build-free scan for common workspace problems — duplicate package references, conflicting target
@@ -971,6 +908,12 @@ dotnet-fast update --to 1.0.0        # back to stable
 `error: formatting failed: target does not exist: restore`, because the name was parsed as a path to
 format — indistinguishable from a typo. They now say what happened and what to use instead, and exit
 `2`. A directory genuinely named `restore` is still treated as a target, as before.
+
+`rewrite` (structural search and replace) was removed after 1.10.7. Running it, with or without its old
+flags, prints a notice and exits `2`, so a pipeline still calling `rewrite --check` fails loudly rather
+than passing. dotnet-fast has no replacement: to ban an API in CI use the Roslyn analyzer
+`Microsoft.CodeAnalysis.BannedApiAnalyzers`, and for structural search over C# use
+[ast-grep](https://ast-grep.github.io).
 
 ---
 
